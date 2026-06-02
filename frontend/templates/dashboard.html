@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>汽车数据可视化平台</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+</head>
+<body>
+    <div class="dashboard-container">
+        <!-- ═══════ HEADER ═══════ -->
+        <header class="header">
+            <div class="header-center">
+                <span class="tech-fringe left"></span>
+                <h1 class="header-title">汽车数据可视化平台</h1>
+                <span class="tech-fringe right"></span>
+            </div>
+            <div class="header-right">
+                <span class="header-time" id="headerTime">--</span>
+                <span class="header-user">
+                    <div class="user-icon">{{ username[0].upper() }}</div>
+                    {{ username }}
+                </span>
+                <button class="logout-btn" onclick="handleLogout()">退出</button>
+            </div>
+        </header>
+
+        <!-- ═══════ TOP ROW ═══════ -->
+        <div class="top-row">
+            <!-- 上左: 数据上传 -->
+            <div class="card top-left">
+                <div class="card-header">
+                    <span class="card-title">数据上传</span>
+                    <span style="font-size:9px;color:var(--text-dim)">JSON / CSV</span>
+                </div>
+                <input type="file" id="fileInput" accept=".csv,.json" style="display:none">
+                <div class="upload-zone" id="uploadZone">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.4">
+                        <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                        <polyline points="17 8 12 3 7 8"/>
+                        <line x1="12" y1="3" x2="12" y2="15"/>
+                    </svg>
+                    <p class="upload-text">点击或拖拽上传数据文件</p>
+                    <p class="upload-hint">支持 .csv / .json 格式</p>
+                    <button class="upload-btn-sm" onclick="event.stopPropagation();document.getElementById('fileInput').click()">
+                        选择文件
+                    </button>
+                </div>
+                <div class="upload-status" id="uploadStatus"></div>
+                <div class="cleaning-report" id="cleaningReport">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
+                        <span style="color:var(--accent);font-size:9px;letter-spacing:1px">数据清洗报告</span>
+                        <span class="eye-toggle" id="eyeToggle" onclick="toggleCleaning()">
+                            <span>&#9673;</span> 隐藏
+                        </span>
+                    </div>
+                    <div id="reportContent"></div>
+                </div>
+            </div>
+
+            <!-- 上右: 汽车销售统计图 -->
+            <div class="card top-right">
+                <div class="card-header">
+                    <span class="card-title">汽车销售统计图</span>
+                    <div class="chart-ctrls">
+                        <button class="chart-btn on" id="btnBar" onclick="toggleSeries('bar')">柱状</button>
+                        <button class="chart-btn on" id="btnLine" onclick="toggleSeries('line')">折线</button>
+                        <button class="chart-btn" id="filterBtn" onclick="toggleFilterPanel()">筛选车型</button>
+                        <div class="filter-panel" id="filterPanel">
+                            <div class="filter-header">
+                                <span>选择车型</span>
+                                <button onclick="vehicleFilter=[];renderSalesChart();document.getElementById('filterPanel').style.display='none'" style="background:none;border:none;color:var(--accent);cursor:pointer;font-size:10px">全部</button>
+                            </div>
+                            <div class="filter-list" id="filterList"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="chart-body"><div class="chart" id="salesChart"></div></div>
+            </div>
+        </div>
+
+        <!-- ═══════ BOTTOM ROW ═══════ -->
+        <div class="bottom-row">
+            <!-- 下左: 数据总体评价 -->
+            <div class="card bottom-left">
+                <div class="card-header">
+                    <span class="card-title">数据总体评价</span>
+                    <button class="chart-btn" onclick="refreshAllData()">刷新</button>
+                </div>
+                <div class="stats-grid-2">
+                    <div class="stat-card-sm"><span class="stat-val" id="statTotal">-</span><span class="stat-lbl">车辆总数</span></div>
+                    <div class="stat-card-sm"><span class="stat-val" id="statTopCar">-</span><span class="stat-lbl">销量冠军</span></div>
+                    <div class="stat-card-sm"><span class="stat-val" id="statTopAmount">-</span><span class="stat-lbl">最高销售额</span></div>
+                    <div class="stat-card-sm"><span class="stat-val" id="statTopModel">-</span><span class="stat-lbl">最热车型</span></div>
+                    <div class="stat-card-sm"><span class="stat-val" id="statTopBrand">-</span><span class="stat-lbl">品牌之冠</span></div>
+                    <div class="stat-card-sm"><span class="stat-val" id="statAvgPrice">-</span><span class="stat-lbl">均价(万元)</span></div>
+                </div>
+                <span class="sec-label">能源类型分布</span>
+                <div class="energy-row">
+                    <div class="energy-item-sm"><div class="energy-dot-sm" style="background:#c07878"></div><span class="energy-val-sm" id="energyOil">-</span><span class="energy-lbl-sm">油车占比</span></div>
+                    <div class="energy-item-sm"><div class="energy-dot-sm" style="background:#78a8c0"></div><span class="energy-val-sm" id="energyElectric">-</span><span class="energy-lbl-sm">电车占比</span></div>
+                    <div class="energy-item-sm"><div class="energy-dot-sm" style="background:#b0a070"></div><span class="energy-val-sm" id="energyHybrid">-</span><span class="energy-lbl-sm">混动占比</span></div>
+                </div>
+                <span class="sec-label">品牌销量排行</span>
+                <ul class="brand-list" id="brandRanking"></ul>
+            </div>
+
+            <!-- 下中左: 品牌销量饼图 -->
+            <div class="card bottom-mid">
+                <span class="card-title-s">品牌销量占比</span>
+                <div class="chart-body"><div class="chart" id="brandPieChart"></div></div>
+            </div>
+
+            <!-- 下中右: 价格占比分析 -->
+            <div class="card bottom-mid2">
+                <span class="card-title-s">价格占比分析</span>
+                <div class="price-dual">
+                    <div class="price-dual-top"><div class="chart" id="priceBarChart"></div></div>
+                    <div class="price-dual-bot"><div class="chart" id="priceDonutChart"></div></div>
+                </div>
+            </div>
+
+            <!-- 下右: AI评价 -->
+            <div class="card bottom-right">
+                <div class="card-header">
+                    <span class="card-title">AI 评价</span>
+                    <button class="ai-btn-sm" id="aiBtn" onclick="requestAI()">生成报告</button>
+                </div>
+                <div class="ai-body" id="aiContent">
+                    <div class="empty-state">点击「生成报告」获取 AI 分析</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+</body>
+</html>

@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>登录 - 汽车数据可视化平台</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/auth.css') }}">
+</head>
+<body>
+    <!-- Floating particles -->
+    <div class="particles" id="particles"></div>
+
+    <div class="auth-container">
+        <div class="auth-card">
+            <h1 class="auth-title">LOGIN</h1>
+            <p class="auth-subtitle">汽车数据可视化平台</p>
+
+            <div class="error-msg" id="errorMsg"></div>
+
+            <form id="loginForm" autocomplete="off">
+                <div class="input-group">
+                    <label class="input-label">账号</label>
+                    <div class="input-wrapper">
+                        <span class="icon">&#9906;</span>
+                        <input type="text" class="auth-input" id="username"
+                               placeholder="" maxlength="20" autocomplete="off">
+                    </div>
+                </div>
+
+                <div class="input-group">
+                    <label class="input-label">密码</label>
+                    <div class="input-wrapper">
+                        <span class="icon">&#9883;</span>
+                        <input type="password" class="auth-input" id="password"
+                               placeholder="" maxlength="32" autocomplete="off">
+                    </div>
+                </div>
+
+                <button type="submit" class="auth-btn" id="loginBtn">
+                    <span class="spinner" style="display:none" id="loginSpinner"></span>
+                    登 录
+                </button>
+            </form>
+
+            <div class="auth-footer">
+                还没有账号？<a href="{{ url_for('register_page') }}">立即注册</a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ── Particles ──
+        (function() {
+            const container = document.getElementById('particles');
+            for (let i = 0; i < 40; i++) {
+                const p = document.createElement('div');
+                p.className = 'particle';
+                p.style.left = Math.random() * 100 + '%';
+                p.style.animationDuration = (6 + Math.random() * 14) + 's';
+                p.style.animationDelay = Math.random() * 10 + 's';
+                p.style.width = (1 + Math.random() * 2) + 'px';
+                p.style.height = p.style.width;
+                container.appendChild(p);
+            }
+        })();
+
+        // ── Login ──
+        const form = document.getElementById('loginForm');
+        const username = document.getElementById('username');
+        const password = document.getElementById('password');
+        const errorMsg = document.getElementById('errorMsg');
+        const loginBtn = document.getElementById('loginBtn');
+        const spinner = document.getElementById('loginSpinner');
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const u = username.value.trim();
+            const p = password.value.trim();
+
+            if (!u || !p) {
+                showError('请输入账号和密码');
+                return;
+            }
+
+            setLoading(true);
+            errorMsg.classList.remove('show');
+
+            try {
+                const resp = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: u, password: p })
+                });
+                const data = await resp.json();
+                if (data.success) {
+                    window.location.href = '/';
+                } else {
+                    showError(data.message);
+                }
+            } catch (err) {
+                showError('网络错误，请稍后重试');
+            } finally {
+                setLoading(false);
+            }
+        });
+
+        // Enter key to submit
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') form.dispatchEvent(new Event('submit'));
+        });
+
+        function showError(msg) {
+            errorMsg.textContent = msg;
+            errorMsg.classList.add('show');
+            // Shake the card
+            const card = document.querySelector('.auth-card');
+            card.style.transform = 'translateX(-4px)';
+            setTimeout(() => { card.style.transform = 'translateX(4px)'; }, 50);
+            setTimeout(() => { card.style.transform = 'translateX(-2px)'; }, 100);
+            setTimeout(() => { card.style.transform = ''; }, 150);
+        }
+
+        function setLoading(loading) {
+            loginBtn.disabled = loading;
+            spinner.style.display = loading ? 'inline-block' : 'none';
+            loginBtn.classList.toggle('loading', loading);
+        }
+    </script>
+</body>
+</html>

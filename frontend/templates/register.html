@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>注册 - 汽车数据可视化平台</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/auth.css') }}">
+</head>
+<body>
+    <div class="particles" id="particles"></div>
+
+    <div class="auth-container">
+        <div class="auth-card">
+            <h1 class="auth-title">REGISTER</h1>
+            <p class="auth-subtitle">创建您的数据分析账户</p>
+
+            <div class="error-msg" id="errorMsg"></div>
+            <div class="success-msg" id="successMsg"></div>
+
+            <form id="registerForm" autocomplete="off">
+                <div class="input-group">
+                    <label class="input-label">账号</label>
+                    <div class="input-wrapper">
+                        <span class="icon">&#9906;</span>
+                        <input type="text" class="auth-input" id="username"
+                               placeholder="" maxlength="20" autocomplete="off">
+                    </div>
+                </div>
+
+                <div class="input-group">
+                    <label class="input-label">密码</label>
+                    <div class="input-wrapper">
+                        <span class="icon">&#9883;</span>
+                        <input type="password" class="auth-input" id="password"
+                               placeholder="" maxlength="32" autocomplete="off">
+                    </div>
+                    <div class="pw-strength"><div class="pw-strength-bar" id="pwBar"></div></div>
+                    <span style="font-size:9px;color:var(--text-dim);margin-top:2px;display:block" id="pwHint"></span>
+                </div>
+
+                <div class="input-group">
+                    <label class="input-label">确认密码</label>
+                    <div class="input-wrapper">
+                        <span class="icon">&#9883;</span>
+                        <input type="password" class="auth-input" id="confirmPassword"
+                               placeholder="" maxlength="32" autocomplete="off">
+                    </div>
+                </div>
+
+                <button type="submit" class="auth-btn" id="regBtn">
+                    <span class="spinner" style="display:none" id="regSpinner"></span>
+                    注 册
+                </button>
+
+                <a href="{{ url_for('login_page') }}" class="auth-btn secondary" style="display:flex;align-items:center;justify-content:center;text-decoration:none;padding:12px;border-radius:6px;margin-top:8px">
+                    返回登录
+                </a>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        // Particles
+        (function() {
+            const container = document.getElementById('particles');
+            for (let i = 0; i < 40; i++) {
+                const p = document.createElement('div');
+                p.className = 'particle';
+                p.style.left = Math.random() * 100 + '%';
+                p.style.animationDuration = (6 + Math.random() * 14) + 's';
+                p.style.animationDelay = Math.random() * 10 + 's';
+                p.style.width = (1 + Math.random() * 2) + 'px';
+                p.style.height = p.style.width;
+                container.appendChild(p);
+            }
+        })();
+
+        const form = document.getElementById('registerForm');
+        const username = document.getElementById('username');
+        const password = document.getElementById('password');
+        const confirmPw = document.getElementById('confirmPassword');
+        const errorMsg = document.getElementById('errorMsg');
+        const successMsg = document.getElementById('successMsg');
+        const regBtn = document.getElementById('regBtn');
+        const spinner = document.getElementById('regSpinner');
+        const pwBar = document.getElementById('pwBar');
+        const pwHint = document.getElementById('pwHint');
+
+        // Password strength
+        password.addEventListener('input', () => {
+            const val = password.value;
+            let strength = 0;
+            if (val.length >= 6) strength++;
+            if (val.length >= 10) strength++;
+            if (/[A-Z]/.test(val) || /[a-z]/.test(val)) strength++;
+            if (/[0-9]/.test(val)) strength++;
+            if (/[^A-Za-z0-9]/.test(val)) strength++;
+
+            const pct = (strength / 5) * 100;
+            pwBar.style.width = pct + '%';
+            const colors = ['#ef4444', '#f59e0b', '#f59e0b', '#22c55e', '#00d4ff'];
+            pwBar.style.background = colors[Math.min(strength, 4)];
+            const hints = ['太弱', '较弱', '一般', '较强', '很强', '极强'];
+            pwHint.textContent = hints[Math.min(strength, 5)];
+            pwHint.style.color = colors[Math.min(strength, 4)];
+        });
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            errorMsg.classList.remove('show');
+            successMsg.classList.remove('show');
+
+            const u = username.value.trim();
+            const p = password.value;
+            const cp = confirmPw.value;
+
+            if (!u || !p || !cp) {
+                showError('请填写所有字段');
+                return;
+            }
+            if (p.length < 6) {
+                showError('密码长度至少6位');
+                return;
+            }
+            if (p !== cp) {
+                showError('两次密码输入不一致');
+                return;
+            }
+
+            setLoading(true);
+            try {
+                const resp = await fetch('/api/auth/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: u, password: p })
+                });
+                const data = await resp.json();
+                if (data.success) {
+                    successMsg.textContent = '注册成功！正在跳转登录页...';
+                    successMsg.classList.add('show');
+                    setTimeout(() => { window.location.href = '/login'; }, 1200);
+                } else {
+                    showError(data.message);
+                }
+            } catch (err) {
+                showError('网络错误，请稍后重试');
+            } finally {
+                setLoading(false);
+            }
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') form.dispatchEvent(new Event('submit'));
+        });
+
+        function showError(msg) {
+            errorMsg.textContent = msg;
+            errorMsg.classList.add('show');
+            const card = document.querySelector('.auth-card');
+            card.style.transform = 'translateX(-4px)';
+            setTimeout(() => { card.style.transform = 'translateX(4px)'; }, 50);
+            setTimeout(() => { card.style.transform = 'translateX(-2px)'; }, 100);
+            setTimeout(() => { card.style.transform = ''; }, 150);
+        }
+
+        function setLoading(loading) {
+            regBtn.disabled = loading;
+            spinner.style.display = loading ? 'inline-block' : 'none';
+            regBtn.classList.toggle('loading', loading);
+        }
+    </script>
+</body>
+</html>
