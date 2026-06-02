@@ -18,12 +18,17 @@
             <div class="error-msg" id="errorMsg"></div>
 
             <form id="loginForm" autocomplete="off">
+                <!-- 欺骗浏览器自动填充的隐藏字段 -->
+                <input type="text" name="fakeuser" style="display:none" autocomplete="off">
+                <input type="password" name="fakepass" style="display:none" autocomplete="off">
+
                 <div class="input-group">
                     <label class="input-label">账号</label>
                     <div class="input-wrapper">
                         <span class="icon">&#9906;</span>
-                        <input type="text" class="auth-input" id="username"
-                               placeholder="" maxlength="20" autocomplete="off">
+                        <input type="text" class="auth-input" id="username" name="uid"
+                               placeholder="" maxlength="20" autocomplete="new-password" readonly
+                               onfocus="this.removeAttribute('readonly')">
                     </div>
                 </div>
 
@@ -31,8 +36,9 @@
                     <label class="input-label">密码</label>
                     <div class="input-wrapper">
                         <span class="icon">&#9883;</span>
-                        <input type="password" class="auth-input" id="password"
-                               placeholder="" maxlength="32" autocomplete="off">
+                        <input type="password" class="auth-input" id="password" name="pwd"
+                               placeholder="" maxlength="32" autocomplete="new-password" readonly
+                               onfocus="this.removeAttribute('readonly')">
                     </div>
                 </div>
 

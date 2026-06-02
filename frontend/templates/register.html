@@ -18,12 +18,17 @@
             <div class="success-msg" id="successMsg"></div>
 
             <form id="registerForm" autocomplete="off">
+                <!-- 欺骗浏览器自动填充的隐藏字段 -->
+                <input type="text" name="fakeuser" style="display:none" autocomplete="off">
+                <input type="password" name="fakepass" style="display:none" autocomplete="off">
+
                 <div class="input-group">
                     <label class="input-label">账号</label>
                     <div class="input-wrapper">
                         <span class="icon">&#9906;</span>
-                        <input type="text" class="auth-input" id="username"
-                               placeholder="" maxlength="20" autocomplete="off">
+                        <input type="text" class="auth-input" id="username" name="uid"
+                               placeholder="" maxlength="20" autocomplete="new-password" readonly
+                               onfocus="this.removeAttribute('readonly')">
                     </div>
                 </div>
 
@@ -31,8 +36,9 @@
                     <label class="input-label">密码</label>
                     <div class="input-wrapper">
                         <span class="icon">&#9883;</span>
-                        <input type="password" class="auth-input" id="password"
-                               placeholder="" maxlength="32" autocomplete="off">
+                        <input type="password" class="auth-input" id="password" name="pwd"
+                               placeholder="" maxlength="32" autocomplete="new-password" readonly
+                               onfocus="this.removeAttribute('readonly')">
                     </div>
                     <div class="pw-strength"><div class="pw-strength-bar" id="pwBar"></div></div>
                     <span style="font-size:9px;color:var(--text-dim);margin-top:2px;display:block" id="pwHint"></span>
@@ -42,8 +48,9 @@
                     <label class="input-label">确认密码</label>
                     <div class="input-wrapper">
                         <span class="icon">&#9883;</span>
-                        <input type="password" class="auth-input" id="confirmPassword"
-                               placeholder="" maxlength="32" autocomplete="off">
+                        <input type="password" class="auth-input" id="confirmPassword" name="pwd2"
+                               placeholder="" maxlength="32" autocomplete="new-password" readonly
+                               onfocus="this.removeAttribute('readonly')">
                     </div>
                 </div>
 
