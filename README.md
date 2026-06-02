@@ -89,4 +89,4 @@ python app.py
 
 | 变量 | 说明 |
 |------|------|
-| `DEEPSEEK_API_KEY` | DeepSeek API 密钥（不设置则使用本地智能分析） |
+| `DEEPSEEK_API_KEY` | DeepSeek API 密钥 |
