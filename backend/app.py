@@ -107,6 +107,15 @@ def api_login():
 
 @app.route('/api/auth/logout', methods=['POST'])
 def api_logout():
+    uid = session.get('user_id')
+    uname = session.get('username')
+    if uid:
+        clear_user_vehicles(uid)
+        # Also remove user summary JSON in database folder
+        db_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'database')
+        summary_file = os.path.join(db_dir, f"user_{uname}_summary.json")
+        if os.path.exists(summary_file):
+            os.remove(summary_file)
     session.clear()
     return jsonify({"success": True, "message": "已退出登录"})
 
