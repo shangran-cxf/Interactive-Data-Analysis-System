@@ -476,6 +476,71 @@ body::before {
 
 .ml-loading { font-size: 12px; color: rgba(255,255,255,0.3); text-align: center; padding: 20px 0; }
 
+/* ═══════════ Matplotlib 参数面板 (第二部分) ═══════════ */
+.param-panel .param-row {
+  display: flex; gap: 10px; align-items: flex-start;
+  margin-bottom: 8px; flex-wrap: wrap;
+}
+.param-item {
+  display: flex; flex-direction: column; gap: 3px;
+  font-size: 9px;
+}
+.param-item label {
+  color: var(--text-dim); letter-spacing: 1px;
+}
+.param-item select, .param-item input[type=text], .param-item input[type=number] {
+  background: rgba(10, 20, 35, 0.8);
+  border: 1px solid rgba(100, 150, 180, 0.18);
+  border-radius: 3px;
+  color: var(--text);
+  font-size: 10px;
+  padding: 4px 6px;
+  outline: none;
+  transition: all 0.2s;
+  font-family: inherit;
+}
+.param-item select:hover, .param-item input:hover {
+  border-color: var(--accent-dim);
+}
+.param-item select:focus, .param-item input:focus {
+  border-color: var(--accent);
+  background: rgba(15, 30, 50, 0.9);
+}
+.param-item input[type=checkbox] {
+  accent-color: var(--accent-dim);
+  margin-right: 3px;
+  cursor: pointer;
+}
+.param-item label:has(input[type=checkbox]) {
+  cursor: pointer;
+  color: var(--text);
+  font-size: 10px;
+  letter-spacing: 0;
+}
+.generate-btn {
+  background: linear-gradient(135deg, rgba(106, 175, 207, 0.15), rgba(106, 175, 207, 0.05));
+  border: 1px solid var(--accent-dim);
+  border-radius: 4px;
+  color: var(--accent);
+  font-size: 11px;
+  padding: 6px 14px;
+  cursor: pointer;
+  transition: all 0.25s;
+  font-family: inherit;
+  letter-spacing: 1px;
+  white-space: nowrap;
+}
+.generate-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, rgba(106, 175, 207, 0.3), rgba(106, 175, 207, 0.1));
+  border-color: var(--accent);
+  color: var(--white);
+  transform: translateY(-1px);
+  box-shadow: 0 3px 10px rgba(106, 175, 207, 0.2);
+}
+.generate-btn:disabled {
+  opacity: 0.5; cursor: not-allowed;
+}
+
 /* ═══════════ RESPONSIVE ═══════════ */
 @media (max-width: 1400px) {
   .top-left, .bottom-left { width: 260px; }
