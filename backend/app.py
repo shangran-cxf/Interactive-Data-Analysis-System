@@ -15,7 +15,9 @@ from database import (
     clear_user_vehicles, insert_user_vehicles, record_upload,
     get_user_vehicles, get_user_stats, get_user_brand_sales,
     get_user_price_distribution, get_user_energy_ratio, get_user_sales_chart,
-    get_all_users, get_user_uploads, get_all_uploads
+    get_all_users, get_user_uploads, get_all_uploads,
+    archive_upload_vehicles, set_active_upload, get_active_upload_id,
+    activate_upload, delete_upload
 )
 from ml.predictor import SalesPredictor
 from ml.correlation import CorrelationAnalyzer
@@ -105,6 +107,12 @@ def api_login():
     if ok:
         session['user_id'] = user['id']
         session['username'] = user['username']
+        # 恢复上次正在分析的历史批次（登出会清空 vehicles，此处从归档还原）
+        active_id = get_active_upload_id(user['id'])
+        if active_id:
+            restored, _, records = activate_upload(user['id'], active_id)
+            if restored:
+                write_user_summary(user['username'], records)
         return jsonify({"success": True, "message": msg, "username": user['username']})
     return jsonify({"success": False, "message": msg}), 400
 
@@ -193,6 +201,25 @@ def clean_dataframe(df: pd.DataFrame) -> dict:
     return report, df
 
 
+def write_user_summary(username: str, records: list) -> dict:
+    """根据当前生效的明细数据，写出 database/user_<用户名>_summary.json 摘要快照。"""
+    db_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'database')
+    sdf = pd.DataFrame(records)
+    summary = {
+        "username": username,
+        "record_count": len(records),
+        "brand_count": int(sdf['brand'].nunique()),
+        "brands": sorted(sdf['brand'].unique().tolist()),
+        "energy_distribution": sdf['energy_type'].value_counts().to_dict(),
+        "avg_price": round(float(sdf['sales_price'].mean()), 2),
+        "updated_at": pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')
+    }
+    summary_path = os.path.join(db_dir, f"user_{username}_summary.json")
+    with open(summary_path, 'w', encoding='utf-8') as f:
+        json.dump(summary, f, ensure_ascii=False, indent=2)
+    return summary
+
+
 @app.route('/api/data/upload', methods=['POST'])
 @login_required
 def api_upload():
@@ -232,27 +259,16 @@ def api_upload():
         if df.empty:
             return jsonify({"success": False, "message": "清洗后无有效数据"}), 400
 
-        # Store per user — replace this user's previous data
+        # Store per user — 归档为历史批次，并设为当前生效数据
         records = df[['brand', 'model', 'sales_volume', 'sales_price', 'energy_type']].to_dict('records')
+        upload_id = record_upload(uid, file.filename, len(records))
+        archive_upload_vehicles(upload_id, records)   # 历史归档（可回溯）
         clear_user_vehicles(uid)
-        insert_user_vehicles(uid, records)
-        record_upload(uid, file.filename, len(records))
+        insert_user_vehicles(uid, records)            # 当前分析视图
+        set_active_upload(uid, upload_id)             # 标记为 active 批次
 
         # Save user summary in database folder for browsing
-        db_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'database')
-        summary = {
-            "username": session.get('username'),
-            "upload_file": file.filename,
-            "record_count": len(records),
-            "brand_count": int(df['brand'].nunique()),
-            "brands": sorted(df['brand'].unique().tolist()),
-            "energy_distribution": df['energy_type'].value_counts().to_dict(),
-            "avg_price": round(float(df['sales_price'].mean()), 2),
-            "updated_at": pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')
-        }
-        summary_path = os.path.join(db_dir, f"user_{session.get('username')}_summary.json")
-        with open(summary_path, 'w', encoding='utf-8') as f:
-            json.dump(summary, f, ensure_ascii=False, indent=2)
+        write_user_summary(session.get('username'), records)
 
         # Save cleaned Excel
         excel_name = f"cleaned_{uuid.uuid4().hex[:8]}.xlsx"
@@ -317,6 +333,35 @@ def api_sales_chart():
 @login_required
 def api_vehicles():
     return jsonify(get_user_vehicles(get_uid()))
+
+
+# ── 上传历史记录管理（列表 / 切换 / 删除） ──
+
+@app.route('/api/data/uploads')
+@login_required
+def api_data_uploads():
+    """返回当前用户的上传历史列表（含 is_active / archived_count）。"""
+    return jsonify(get_user_uploads(get_uid()))
+
+
+@app.route('/api/data/uploads/<int:upload_id>/activate', methods=['POST'])
+@login_required
+def api_activate_upload(upload_id):
+    """把某条历史上传切换为当前分析数据。"""
+    uid = get_uid()
+    ok, msg, records = activate_upload(uid, upload_id)
+    if not ok:
+        return jsonify({"success": False, "message": msg}), 400
+    write_user_summary(session.get('username'), records)
+    return jsonify({"success": True, "message": msg, "record_count": len(records)})
+
+
+@app.route('/api/data/uploads/<int:upload_id>', methods=['DELETE'])
+@login_required
+def api_delete_upload(upload_id):
+    """删除一条上传历史及其归档明细。"""
+    ok, msg = delete_upload(get_uid(), upload_id)
+    return jsonify({"success": ok, "message": msg}), (200 if ok else 400)
 
 
 # ── Matplotlib 汽车销售统计图 API (第二部分) ──
