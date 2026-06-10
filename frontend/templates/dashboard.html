@@ -59,24 +59,72 @@
                 </div>
             </div>
 
-            <!-- 上右: 汽车销售统计图 -->
+            <!-- 上右: 汽车销售统计图 (第二部分 - Matplotlib 自定义参数) -->
             <div class="card top-right">
                 <div class="card-header">
-                    <span class="card-title">汽车销售统计图</span>
+                    <span class="card-title">汽车销售统计图 <span style="font-size:9px;color:var(--text-dim);margin-left:4px">(Matplotlib 自定义参数)</span></span>
                     <div class="chart-ctrls">
-                        <button class="chart-btn on" id="btnBar" onclick="toggleSeries('bar')">柱状</button>
-                        <button class="chart-btn on" id="btnLine" onclick="toggleSeries('line')">折线</button>
-                        <button class="chart-btn" id="filterBtn" onclick="toggleFilterPanel()">筛选车型</button>
-                        <div class="filter-panel" id="filterPanel">
-                            <div class="filter-header">
-                                <span>选择车型</span>
-                                <button onclick="vehicleFilter=[];renderSalesChart();document.getElementById('filterPanel').style.display='none'" style="background:none;border:none;color:var(--accent);cursor:pointer;font-size:10px">全部</button>
-                            </div>
-                            <div class="filter-list" id="filterList"></div>
-                        </div>
+                        <!-- 模式切换: ECharts (原) / Matplotlib (新) -->
+                        <button class="chart-btn" id="btnModeEcharts" onclick="switchChartMode('echarts')">ECharts</button>
+                        <button class="chart-btn on" id="btnModeMpl" onclick="switchChartMode('mpl')">Matplotlib</button>
+                        <button class="chart-btn" id="btnParams" onclick="toggleParamPanel()">⚙ 参数设置</button>
                     </div>
                 </div>
-                <div class="chart-body"><div class="chart" id="salesChart"></div></div>
+
+                <!-- Matplotlib 自定义参数面板 -->
+                <div class="param-panel" id="paramPanel" style="display:none;padding:10px 14px;border-bottom:1px solid rgba(130,160,180,0.15);background:rgba(15,25,40,0.4);">
+                    <div class="param-row">
+                        <div class="param-item">
+                            <label>图表类型</label>
+                            <select id="paramChartType"></select>
+                        </div>
+                        <div class="param-item">
+                            <label>配色主题</label>
+                            <select id="paramTheme"></select>
+                        </div>
+                        <div class="param-item">
+                            <label>能源类型</label>
+                            <select id="paramEnergy"></select>
+                        </div>
+                    </div>
+                    <div class="param-row">
+                        <div class="param-item">
+                            <label>排序字段</label>
+                            <select id="paramSortBy"></select>
+                        </div>
+                        <div class="param-item">
+                            <label>排序方式</label>
+                            <select id="paramSortOrder">
+                                <option value="desc">从高到低</option>
+                                <option value="asc">从低到高</option>
+                            </select>
+                        </div>
+                        <div class="param-item">
+                            <label>显示数量 (Top N)</label>
+                            <input type="number" id="paramTopN" value="15" min="3" max="50" style="width:70px">
+                        </div>
+                    </div>
+                    <div class="param-row">
+                        <div class="param-item">
+                            <label>图表标题</label>
+                            <input type="text" id="paramTitle" value="汽车销售统计图" style="width:140px">
+                        </div>
+                        <div class="param-item" style="align-items:center;flex-direction:row;gap:8px;padding-top:10px">
+                            <label><input type="checkbox" id="paramShowValue" checked> 显示数值</label>
+                            <label><input type="checkbox" id="paramGridOn" checked> 显示网格</label>
+                        </div>
+                        <div class="param-item">
+                            <button class="generate-btn" id="btnGenerate" onclick="generateMplChart()">🎨 生成图表</button>
+                        </div>
+                    </div>
+                    <div style="font-size:9px;color:var(--text-dim);margin-top:6px" id="chartInfo"></div>
+                </div>
+
+                <!-- 图表显示区 -->
+                <div class="chart-body">
+                    <div class="chart" id="salesChart"></div>
+                    <img class="chart" id="mplChartImage" style="display:none;width:100%;height:100%;object-fit:contain;background:transparent" />
+                </div>
             </div>
         </div>
 

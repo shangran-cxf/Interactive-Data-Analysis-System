@@ -748,6 +748,162 @@ mlInit();
 // ═══════════════ Logout ═══════════════
 async function handleLogout() {
     stopPieRotate(); stopDonutRotate();
-    await fetch('/api/auth/logout', { method:'POST' });
+    await fetch('/api/auth/logout', { method: 'POST' });
     window.location.href = '/login';
 }
+
+// ═══════════════ Matplotlib 汽车销售统计图 (第二部分核心) ═══════════════
+let chartMode = 'mpl';       // 当前模式: 'echarts' | 'mpl'
+let chartConfig = null;       // 图表配置 (从后端获取)
+
+// 初始化: 获取图表配置并填充下拉框
+async function initChartConfig() {
+    try {
+        const resp = await fetch('/api/chart/config');
+        chartConfig = await resp.json();
+        if (!chartConfig) return;
+
+        // 填充图表类型
+        const typeSel = document.getElementById('paramChartType');
+        if (typeSel) {
+            typeSel.innerHTML = Object.entries(chartConfig.chart_types)
+                .map(([k, v]) => `<option value="${k}">${v}</option>`).join('');
+            typeSel.value = chartConfig.default_params.chart_type;
+        }
+
+        // 填充配色主题
+        const themeSel = document.getElementById('paramTheme');
+        if (themeSel) {
+            themeSel.innerHTML = Object.entries(chartConfig.themes)
+                .map(([k, v]) => `<option value="${k}">${v}</option>`).join('');
+            themeSel.value = chartConfig.default_params.theme;
+        }
+
+        // 填充能源类型
+        const energySel = document.getElementById('paramEnergy');
+        if (energySel) {
+            energySel.innerHTML = Object.entries(chartConfig.energy_filters)
+                .map(([k, v]) => `<option value="${k}">${v}</option>`).join('');
+            energySel.value = chartConfig.default_params.energy_filter;
+        }
+
+        // 填充排序字段
+        const sortSel = document.getElementById('paramSortBy');
+        if (sortSel) {
+            sortSel.innerHTML = Object.entries(chartConfig.sort_fields)
+                .map(([k, v]) => `<option value="${k}">${v}</option>`).join('');
+            sortSel.value = chartConfig.default_params.sort_by;
+        }
+
+        // 其他默认参数
+        const topNEl = document.getElementById('paramTopN');
+        if (topNEl) topNEl.value = chartConfig.default_params.top_n;
+        const titleEl = document.getElementById('paramTitle');
+        if (titleEl) titleEl.value = chartConfig.default_params.title;
+        const showValEl = document.getElementById('paramShowValue');
+        if (showValEl) showValEl.checked = chartConfig.default_params.show_value;
+        const gridEl = document.getElementById('paramGridOn');
+        if (gridEl) gridEl.checked = chartConfig.default_params.grid_on;
+    } catch (e) {
+        console.error('加载图表配置失败:', e);
+    }
+}
+
+// 切换图表模式 (ECharts / Matplotlib)
+function switchChartMode(mode) {
+    chartMode = mode;
+    const btnEcharts = document.getElementById('btnModeEcharts');
+    const btnMpl = document.getElementById('btnModeMpl');
+    const btnParams = document.getElementById('btnParams');
+    const salesChart = document.getElementById('salesChart');
+    const mplImage = document.getElementById('mplChartImage');
+
+    if (mode === 'mpl') {
+        btnMpl.classList.add('on');
+        btnEcharts.classList.remove('on');
+        btnParams.style.display = 'inline-block';
+        if (salesChart) salesChart.style.display = 'none';
+        if (mplImage) mplImage.style.display = 'block';
+        // 自动生成一次默认图表
+        generateMplChart();
+    } else {
+        btnEcharts.classList.add('on');
+        btnMpl.classList.remove('on');
+        btnParams.style.display = 'none';
+        const panel = document.getElementById('paramPanel');
+        if (panel) panel.style.display = 'none';
+        if (salesChart) salesChart.style.display = 'block';
+        if (mplImage) mplImage.style.display = 'none';
+        // 使用 ECharts 渲染
+        refreshAllData();
+    }
+}
+
+// 切换参数面板的显示/隐藏
+function toggleParamPanel() {
+    const panel = document.getElementById('paramPanel');
+    if (!panel) return;
+    panel.style.display = (panel.style.display === 'none' || panel.style.display === '') ? 'block' : 'none';
+}
+
+// 根据当前参数生成 Matplotlib 图表
+async function generateMplChart() {
+    const infoEl = document.getElementById('chartInfo');
+    const mplImage = document.getElementById('mplChartImage');
+    const btn = document.getElementById('btnGenerate');
+
+    // 收集用户自定义参数
+    const params = {
+        chart_type: document.getElementById('paramChartType')?.value || 'bar',
+        theme: document.getElementById('paramTheme')?.value || 'tech',
+        top_n: parseInt(document.getElementById('paramTopN')?.value || '15'),
+        sort_by: document.getElementById('paramSortBy')?.value || 'sales_volume',
+        sort_order: document.getElementById('paramSortOrder')?.value || 'desc',
+        title: document.getElementById('paramTitle')?.value || '汽车销售统计图',
+        show_value: document.getElementById('paramShowValue')?.checked ?? true,
+        grid_on: document.getElementById('paramGridOn')?.checked ?? true,
+        energy_filter: document.getElementById('paramEnergy')?.value || 'all'
+    };
+
+    if (btn) { btn.disabled = true; btn.textContent = '生成中...'; }
+    if (infoEl) infoEl.textContent = '正在生成图表...';
+
+    try {
+        const resp = await fetch('/api/chart/generate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(params)
+        });
+        const result = await resp.json();
+
+        if (result.success && result.image_base64) {
+            // 显示生成的 Matplotlib 图片
+            if (mplImage) {
+                mplImage.src = result.image_base64;
+                mplImage.style.display = 'block';
+                const echartsEl = document.getElementById('salesChart');
+                if (echartsEl) echartsEl.style.display = 'none';
+            }
+            // 显示统计信息
+            if (result.info && infoEl) {
+                const info = result.info;
+                infoEl.innerHTML = `✓ <b>${info.title}</b> | 类型: ${info.chart_type} | 主题: ${info.theme} | 数据: ${info.data_count}条 | 总销量: ${info.total_sales.toLocaleString()}辆 | 均价: ${info.avg_price}万元 | 字体: ${info.font_used}`;
+            }
+        } else {
+            if (infoEl) infoEl.innerHTML = `<span style="color:#c07878">✗ ${result.message || '图表生成失败'}</span>`;
+        }
+    } catch (e) {
+        if (infoEl) infoEl.innerHTML = `<span style="color:#c07878">✗ 请求失败: ${e.message}</span>`;
+    } finally {
+        if (btn) { btn.disabled = false; btn.innerHTML = '🎨 生成图表'; }
+    }
+}
+
+// 在页面初始化完成后加载图表配置 (覆盖原 init 的 refresh)
+document.addEventListener('DOMContentLoaded', () => {
+    setTimeout(() => {
+        initChartConfig();
+        // 默认进入 Matplotlib 模式
+        switchChartMode('mpl');
+    }, 300);
+});
