@@ -547,3 +547,62 @@ body::before {
   .header-title { font-size: 17px; letter-spacing: 4px; }
   .tech-fringe { width: 80px; }
 }
+
+/* ═══════════ UPLOAD HISTORY（历史上传记录） ═══════════ */
+.card.top-left { overflow-y: auto; }
+.upload-history { margin-top: 8px; }
+.uh-header {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 4px;
+}
+.uh-title {
+  font-size: 9px; letter-spacing: 1px; color: var(--accent);
+}
+.uh-refresh {
+  font-size: 12px; color: var(--text-dim); cursor: pointer;
+  line-height: 1; user-select: none; transition: color 0.2s;
+}
+.uh-refresh:hover { color: var(--accent); }
+.uh-list {
+  list-style: none; max-height: 180px; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 4px;
+}
+.uh-empty {
+  font-size: 9px; color: var(--text-dim); text-align: center;
+  padding: 10px 0;
+}
+.uh-item {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 6px; padding: 5px 7px;
+  border: 1px solid var(--border); border-radius: 4px;
+  background: rgba(100, 150, 180, 0.03);
+  transition: border-color 0.2s, background 0.2s;
+}
+.uh-item:hover { border-color: var(--border-light); background: rgba(100, 150, 180, 0.06); }
+.uh-item.active {
+  border-color: rgba(106, 175, 207, 0.4);
+  background: rgba(106, 175, 207, 0.07);
+}
+.uh-info { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1; }
+.uh-name {
+  font-size: 10px; color: var(--text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.uh-item.active .uh-name { color: var(--accent); }
+.uh-meta { font-size: 8px; color: var(--text-dim); }
+.uh-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+.uh-btn {
+  font-size: 9px; padding: 2px 7px; cursor: pointer;
+  background: transparent; color: var(--accent);
+  border: 1px solid var(--border-light); border-radius: 3px;
+  transition: all 0.2s;
+}
+.uh-btn:hover { border-color: var(--accent); background: rgba(100, 150, 180, 0.08); }
+.uh-btn.del { color: #c87878; border-color: rgba(200, 120, 120, 0.2); padding: 2px 5px; }
+.uh-btn.del:hover { border-color: #c87878; background: rgba(200, 120, 120, 0.08); }
+.uh-badge {
+  font-size: 8px; padding: 2px 6px; border-radius: 3px;
+  color: #8cb89a; background: rgba(120, 180, 140, 0.1);
+  border: 1px solid rgba(120, 180, 140, 0.18); white-space: nowrap;
+}
+.uh-badge.dim { color: var(--text-dim); background: transparent; border-color: var(--border); }

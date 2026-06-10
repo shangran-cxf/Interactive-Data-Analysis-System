@@ -37,6 +37,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initAllCharts();
     initVehicleFilter();
     refreshAllData();
+    loadUploadHistory();
     window.addEventListener('resize', () => allCharts.forEach(c => { try { c.resize(); } catch(e) {} }));
 });
 
@@ -81,6 +82,7 @@ async function handleFile(file) {
             showStatus(d.message, 'success');
             if (d.report) showReport(d.report, d.download_url);
             refreshAllData();
+            loadUploadHistory();   // 上传成功后刷新历史列表
 
             // ── 新增：触发 ML 重训练 ──
             corrLoaded = false;
@@ -473,6 +475,83 @@ async function refreshAllData() {
         updatePriceCharts(prices);
     } catch(e) {
         console.error('refresh error:', e);
+    }
+}
+
+// ═══════════════ Upload History（历史记录） ═══════════════
+function fmtUploadTime(ts) {
+    if (!ts) return '';
+    // SQLite CURRENT_TIMESTAMP 形如 "2026-06-10 11:22:33"（UTC）
+    const d = new Date(ts.replace(' ', 'T') + 'Z');
+    if (isNaN(d)) return ts;
+    return d.toLocaleString('zh-CN', {
+        month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false
+    });
+}
+
+async function loadUploadHistory() {
+    const list = document.getElementById('uploadHistoryList');
+    if (!list) return;
+    try {
+        const r = await fetch('/api/data/uploads');
+        const items = await r.json();
+        if (!Array.isArray(items) || items.length === 0) {
+            list.innerHTML = '<li class="uh-empty">暂无历史记录，请先上传数据</li>';
+            return;
+        }
+        list.innerHTML = items.map(it => {
+            const active = it.is_active;
+            const restorable = it.archived_count > 0;
+            const safeName = (it.filename || '').replace(/"/g, '&quot;');
+            return `
+            <li class="uh-item ${active ? 'active' : ''}">
+                <div class="uh-info" title="${safeName}">
+                    <span class="uh-name">${active ? '● ' : ''}${it.filename}</span>
+                    <span class="uh-meta">${it.record_count} 条 · ${fmtUploadTime(it.created_at)}${restorable ? '' : ' · 不可回溯'}</span>
+                </div>
+                <div class="uh-actions">
+                    ${active
+                        ? '<span class="uh-badge">分析中</span>'
+                        : (restorable
+                            ? `<button class="uh-btn" onclick="activateUpload(${it.id})">分析</button>`
+                            : '<span class="uh-badge dim">—</span>')}
+                    <button class="uh-btn del" onclick="deleteUpload(${it.id}, '${safeName}')" title="删除">&#10005;</button>
+                </div>
+            </li>`;
+        }).join('');
+    } catch (e) {
+        list.innerHTML = '<li class="uh-empty">历史记录加载失败</li>';
+    }
+}
+
+async function activateUpload(uploadId) {
+    showStatus('正在切换历史数据...', 'info');
+    try {
+        const r = await fetch(`/api/data/uploads/${uploadId}/activate`, { method: 'POST' });
+        const d = await r.json();
+        if (!d.success) { showStatus(d.message || '切换失败', 'error'); return; }
+        showStatus(`${d.message}（${d.record_count} 条）`, 'success');
+        refreshAllData();
+        loadUploadHistory();
+        // 切换数据后重训练 ML 模型，与上传流程保持一致
+        corrLoaded = false; clusterLoaded = false; clusterChartInstance = null;
+        fetch('/api/ml/retrain', { method: 'POST' }).then(() => mlInit()).catch(() => {});
+    } catch (e) {
+        showStatus('切换失败: ' + e.message, 'error');
+    }
+}
+
+async function deleteUpload(uploadId, name) {
+    if (!confirm(`确定删除历史记录「${name}」吗？该操作不可恢复。`)) return;
+    try {
+        const r = await fetch(`/api/data/uploads/${uploadId}`, { method: 'DELETE' });
+        const d = await r.json();
+        if (!d.success) { showStatus(d.message || '删除失败', 'error'); return; }
+        showStatus(d.message, 'success');
+        loadUploadHistory();
+        refreshAllData();   // 若删除的是当前分析批次，图表会同步清空
+    } catch (e) {
+        showStatus('删除失败: ' + e.message, 'error');
     }
 }
 
