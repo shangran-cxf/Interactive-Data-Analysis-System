@@ -17,6 +17,10 @@ from database import (
     get_user_price_distribution, get_user_energy_ratio, get_user_sales_chart,
     get_all_users, get_user_uploads, get_all_uploads
 )
+from ml.predictor import SalesPredictor
+from ml.correlation import CorrelationAnalyzer
+from ml.cluster import MarketSegmenter
+from database import get_user_vehicles
 
 app = Flask(
     __name__,
@@ -420,6 +424,73 @@ def api_ai_evaluate():
 
 # ── Init ──
 
+
+def _get_user_vehicles():
+    user_id = session.get('user_id')
+    if not user_id:
+        return None, None
+    vehicles = get_user_vehicles(user_id)
+    return user_id, vehicles
+
+@app.route('/api/ml/model-info', methods=['GET'])
+def ml_model_info():
+    user_id, vehicles = _get_user_vehicles()
+    if user_id is None:
+        return jsonify({'success': False, 'error': '未登录'}), 401
+    predictor = SalesPredictor(user_id)
+    return jsonify(predictor.get_model_info())
+
+@app.route('/api/ml/retrain', methods=['POST'])
+def ml_retrain():
+    user_id, vehicles = _get_user_vehicles()
+    if user_id is None:
+        return jsonify({'success': False, 'error': '未登录'}), 401
+    if not vehicles:
+        return jsonify({'success': False, 'error': '暂无数据'}), 400
+    predictor = SalesPredictor(user_id)
+    result = predictor.train(vehicles)
+    return jsonify(result)
+
+@app.route('/api/ml/predict', methods=['POST'])
+def ml_predict():
+    user_id, vehicles = _get_user_vehicles()
+    if user_id is None:
+        return jsonify({'success': False, 'error': '未登录'}), 401
+    data = request.get_json() or {}
+    price       = data.get('price')
+    energy_type = data.get('energyType', '油车')
+    month       = data.get('month')
+    if price is None:
+        return jsonify({'success': False, 'error': '缺少 price 参数'}), 400
+    predictor = SalesPredictor(user_id)
+    if not predictor.model and vehicles:
+        predictor.train(vehicles)
+    return jsonify(predictor.predict(float(price), energy_type, month))
+
+@app.route('/api/ml/correlation', methods=['GET'])
+def ml_correlation():
+    user_id, vehicles = _get_user_vehicles()
+    if user_id is None:
+        return jsonify({'success': False, 'error': '未登录'}), 401
+    if not vehicles:
+        return jsonify({'success': False, 'error': '暂无数据'}), 400
+    stratify = request.args.get('stratify')
+    analyzer = CorrelationAnalyzer(vehicles)
+    return jsonify({'success': True, **analyzer.analyze(stratify)})
+
+@app.route('/api/ml/cluster', methods=['GET'])
+def ml_cluster():
+    user_id, vehicles = _get_user_vehicles()
+    if user_id is None:
+        return jsonify({'success': False, 'error': '未登录'}), 401
+    if not vehicles:
+        return jsonify({'success': False, 'error': '暂无数据'}), 400
+    k = int(request.args.get('k', 3))
+    segmenter = MarketSegmenter(vehicles)
+    return jsonify(segmenter.segment(k))
+
+
+
 if __name__ == '__main__':
     init_db()
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    app.run(debug=True, host='0.0.0.0', port=5001)

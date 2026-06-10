@@ -121,14 +121,96 @@
                 </div>
             </div>
 
-            <!-- 下右: AI评价 -->
+            <!-- 下右: ML 智能分析面板 -->
             <div class="card bottom-right">
                 <div class="card-header">
-                    <span class="card-title">AI 评价</span>
-                    <button class="ai-btn-sm" id="aiBtn" onclick="requestAI()">生成报告</button>
+                    <span class="card-title">ML 智能分析</span>
+                    <span class="ml-model-badge" id="mlModelBadge">加载中...</span>
                 </div>
-                <div class="ai-body" id="aiContent">
-                    <div class="empty-state">点击「生成报告」获取 AI 分析</div>
+
+                <!-- Tab 切换 -->
+                <div class="ml-tabs">
+                    <button class="ml-tab active" data-tab="predict">销量预测</button>
+                    <button class="ml-tab" data-tab="correlation">关系分析</button>
+                    <button class="ml-tab" data-tab="cluster">聚类分析</button>
+                </div>
+
+                <!-- Tab 1：销量预测 -->
+                <div class="ml-tab-content active" id="tab-predict">
+                    <div class="ml-form">
+                        <div class="ml-input-row">
+                            <label>价格（万元）</label>
+                            <input type="number" id="mlPrice" min="1" max="200" step="0.1" placeholder="如 16.98">
+                        </div>
+                        <div class="ml-input-row">
+                            <label>能源类型</label>
+                            <select id="mlEnergy">
+                                <option value="油车">油车</option>
+                                <option value="电车">电车</option>
+                                <option value="混动">混动</option>
+                            </select>
+                        </div>
+                        <button class="ml-btn" id="mlPredictBtn" onclick="mlPredict()">预测</button>
+                    </div>
+                    <div class="ml-result" id="mlPredictResult" style="display:none">
+                        <div class="ml-result-row">
+                            <span class="ml-result-icon">📊</span>
+                            <span class="ml-result-label">预测月销量</span>
+                            <span class="ml-result-value" id="resMonthly">—</span>
+                        </div>
+                        <div class="ml-result-row">
+                            <span class="ml-result-icon">📅</span>
+                            <span class="ml-result-label">估算年销量</span>
+                            <span class="ml-result-value" id="resAnnual">—</span>
+                        </div>
+                        <div class="ml-result-row">
+                            <span class="ml-result-icon">📏</span>
+                            <span class="ml-result-label">置信区间（月）</span>
+                            <span class="ml-result-value" id="resCI">—</span>
+                        </div>
+                        <div class="ml-equation" id="resEquation"></div>
+                        <div class="ml-warning" id="resWarning" style="display:none"></div>
+                    </div>
+                    <div class="ml-empty" id="mlPredictEmpty">请输入价格后点击预测</div>
+                </div>
+
+                <!-- Tab 2：关系分析 -->
+                <div class="ml-tab-content" id="tab-correlation">
+                    <div class="ml-loading" id="corrLoading">分析中...</div>
+                    <div id="corrContent" style="display:none">
+                        <div class="ml-stat-card">
+                            <div class="ml-stat-title">整体价格-销量相关性</div>
+                            <div class="ml-stat-big" id="corrPearson">—</div>
+                            <div class="ml-stat-sub" id="corrInterpret">—</div>
+                        </div>
+                        <div class="ml-stratify-btns">
+                            <button class="ml-btn-sm active" onclick="loadCorrelation()">全部</button>
+                            <button class="ml-btn-sm" onclick="loadCorrelation('energy_type')">按能源分层</button>
+                        </div>
+                        <div id="corrStratify" style="display:none">
+                            <div class="ml-stratify-title">分层相关系数</div>
+                            <div id="corrStratifyContent"></div>
+                        </div>
+                        <div class="ml-counter-title">反例发现</div>
+                        <div id="corrCounters"></div>
+                        <div class="ml-segment-title">各价格区间平均销量</div>
+                        <div id="corrSegments"></div>
+                    </div>
+                </div>
+
+                <!-- Tab 3：聚类分析 -->
+                <div class="ml-tab-content" id="tab-cluster">
+                    <div class="ml-loading" id="clusterLoading">聚类中...</div>
+                    <div id="clusterContent" style="display:none">
+                        <div id="clusterCards"></div>
+                        <button class="ml-btn-sm" id="clusterChartBtn"
+                                onclick="toggleClusterChart()" style="margin-top:8px">
+                            查看散点图
+                        </button>
+                        <div id="clusterChartWrap" style="display:none">
+                            <div id="clusterChart" style="height:200px;margin-top:8px"></div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
