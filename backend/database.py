@@ -43,9 +43,24 @@ def init_db():
             record_count INTEGER DEFAULT 0,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
+        -- 每次上传的清洗后明细数据的历史归档（按 upload_id 区分批次）
+        CREATE TABLE IF NOT EXISTS upload_vehicles (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            upload_id INTEGER NOT NULL REFERENCES uploads(id) ON DELETE CASCADE,
+            brand TEXT NOT NULL,
+            model TEXT NOT NULL,
+            sales_volume INTEGER NOT NULL DEFAULT 0,
+            sales_price REAL NOT NULL DEFAULT 0.0,
+            energy_type TEXT NOT NULL
+        );
         CREATE INDEX IF NOT EXISTS idx_vehicles_user ON vehicles(user_id);
         CREATE INDEX IF NOT EXISTS idx_uploads_user ON uploads(user_id);
+        CREATE INDEX IF NOT EXISTS idx_upload_vehicles_upload ON upload_vehicles(upload_id);
     ''')
+    # ── 轻量迁移：为既有数据库补充 users.active_upload_id 列（指向当前正在分析的上传批次）──
+    user_cols = [r["name"] for r in conn.execute("PRAGMA table_info(users)")]
+    if "active_upload_id" not in user_cols:
+        conn.execute("ALTER TABLE users ADD COLUMN active_upload_id INTEGER")
     conn.commit()
     conn.close()
 
@@ -108,14 +123,105 @@ def insert_user_vehicles(user_id: int, records: list[dict]):
     conn.close()
 
 
-def record_upload(user_id: int, filename: str, record_count: int):
+def record_upload(user_id: int, filename: str, record_count: int) -> int:
+    """记录一次上传，返回新生成的 upload_id（供历史归档关联使用）。"""
     conn = get_db()
-    conn.execute(
+    cur = conn.execute(
         "INSERT INTO uploads (user_id, filename, record_count) VALUES (?, ?, ?)",
         (user_id, filename, record_count)
     )
     conn.commit()
+    upload_id = cur.lastrowid
     conn.close()
+    return upload_id
+
+
+# ── Upload history (归档 / 切换 / 删除) ──
+
+def archive_upload_vehicles(upload_id: int, records: list[dict]):
+    """把某次上传清洗后的明细数据归档到 upload_vehicles，作为可回溯的历史记录。"""
+    conn = get_db()
+    conn.executemany(
+        "INSERT INTO upload_vehicles (upload_id, brand, model, sales_volume, sales_price, energy_type) VALUES (?, ?, ?, ?, ?, ?)",
+        [(upload_id, r['brand'], r['model'], r['sales_volume'], r['sales_price'], r['energy_type']) for r in records]
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_upload_vehicles(upload_id: int) -> list[dict]:
+    """读取某次上传归档的明细数据。"""
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT brand, model, sales_volume, sales_price, energy_type "
+        "FROM upload_vehicles WHERE upload_id = ? ORDER BY brand, model",
+        (upload_id,)
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_upload(user_id: int, upload_id: int) -> dict:
+    """按 (user_id, upload_id) 取单条上传记录，兼作归属校验。"""
+    conn = get_db()
+    row = conn.execute(
+        "SELECT * FROM uploads WHERE id = ? AND user_id = ?", (upload_id, user_id)
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def set_active_upload(user_id: int, upload_id):
+    """设置该用户当前正在分析的上传批次。"""
+    conn = get_db()
+    conn.execute("UPDATE users SET active_upload_id = ? WHERE id = ?", (upload_id, user_id))
+    conn.commit()
+    conn.close()
+
+
+def get_active_upload_id(user_id: int):
+    """取该用户当前正在分析的上传批次 id（无则返回 None）。"""
+    conn = get_db()
+    row = conn.execute("SELECT active_upload_id FROM users WHERE id = ?", (user_id,)).fetchone()
+    conn.close()
+    return row["active_upload_id"] if row else None
+
+
+def activate_upload(user_id: int, upload_id: int) -> tuple[bool, str, list]:
+    """
+    把某条历史上传切换为「当前分析数据」：
+    校验归属 → 从归档恢复明细到 vehicles → 记为 active。
+    返回 (是否成功, 提示, 恢复的记录列表)。
+    """
+    up = get_upload(user_id, upload_id)
+    if not up:
+        return False, "历史记录不存在或无权访问", []
+    records = get_upload_vehicles(upload_id)
+    if not records:
+        return False, "该历史记录没有可恢复的明细数据（可能上传于历史功能上线之前）", []
+    clear_user_vehicles(user_id)
+    insert_user_vehicles(user_id, records)
+    set_active_upload(user_id, upload_id)
+    return True, "已切换到所选历史数据", records
+
+
+def delete_upload(user_id: int, upload_id: int) -> tuple[bool, str]:
+    """删除一条上传历史及其归档明细；若删的是当前 active 批次，则一并清空 vehicles。"""
+    up = get_upload(user_id, upload_id)
+    if not up:
+        return False, "历史记录不存在或无权访问"
+    conn = get_db()
+    was_active = conn.execute(
+        "SELECT active_upload_id FROM users WHERE id = ?", (user_id,)
+    ).fetchone()["active_upload_id"] == upload_id
+    conn.execute("DELETE FROM upload_vehicles WHERE upload_id = ?", (upload_id,))
+    conn.execute("DELETE FROM uploads WHERE id = ? AND user_id = ?", (upload_id, user_id))
+    if was_active:
+        conn.execute("UPDATE users SET active_upload_id = NULL WHERE id = ?", (user_id,))
+        conn.execute("DELETE FROM vehicles WHERE user_id = ?", (user_id,))
+    conn.commit()
+    conn.close()
+    return True, "已删除该历史记录"
 
 
 def get_user_vehicles(user_id: int) -> list[dict]:
@@ -263,13 +369,29 @@ def get_all_users() -> list[dict]:
 
 
 def get_user_uploads(user_id: int) -> list[dict]:
+    """
+    返回该用户的上传历史（倒序），并附带：
+      · is_active     — 是否为当前正在分析的批次
+      · archived_count — 该批次归档的可恢复明细条数（0 表示无法回溯）
+    供前端历史记录列表选择使用。
+    """
     conn = get_db()
+    active_row = conn.execute(
+        "SELECT active_upload_id FROM users WHERE id = ?", (user_id,)
+    ).fetchone()
+    active_id = active_row["active_upload_id"] if active_row else None
     rows = conn.execute(
-        "SELECT * FROM uploads WHERE user_id = ? ORDER BY created_at DESC",
+        """
+        SELECT up.id, up.user_id, up.filename, up.record_count, up.created_at,
+               (SELECT COUNT(*) FROM upload_vehicles uv WHERE uv.upload_id = up.id) AS archived_count
+        FROM uploads up
+        WHERE up.user_id = ?
+        ORDER BY up.created_at DESC, up.id DESC
+        """,
         (user_id,)
     ).fetchall()
     conn.close()
-    return [dict(r) for r in rows]
+    return [{**dict(r), "is_active": r["id"] == active_id} for r in rows]
 
 
 def get_all_uploads() -> list[dict]:

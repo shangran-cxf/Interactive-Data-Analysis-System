@@ -1,0 +1,57 @@
+# ───────── Python ─────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# 虚拟环境
+.venv/
+venv/
+env/
+ENV/
+
+# 打包 / 测试缓存
+build/
+dist/
+*.egg-info/
+.eggs/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# ───────── 项目运行时生成的数据 ─────────
+# SQLite 数据库（首次运行自动创建，含 WAL 模式的附属文件）
+database/app.db
+database/app.db-wal
+database/app.db-shm
+database/*.db
+database/*.sqlite
+database/*.sqlite3
+
+# 用户数据摘要快照（上传时生成，登出时删除）
+database/user_*_summary.json
+
+# 上传暂存与清洗后导出的 Excel
+uploads/
+!uploads/.gitkeep
+
+# ML 模型持久化文件
+ml_models/
+backend/ml/models/
+*.joblib
+*.pkl
+
+# ───────── 密钥 / 环境变量 ─────────
+.env
+.env.*
+*.local
+
+# ───────── 编辑器 / 操作系统 ─────────
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db

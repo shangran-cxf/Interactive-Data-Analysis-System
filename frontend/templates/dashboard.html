@@ -57,6 +57,17 @@
                     </div>
                     <div id="reportContent"></div>
                 </div>
+
+                <!-- 历史上传记录：可选择之前上传的数据进行分析 -->
+                <div class="upload-history" id="uploadHistory">
+                    <div class="uh-header">
+                        <span class="uh-title">历史上传记录</span>
+                        <span class="uh-refresh" id="uhRefresh" onclick="loadUploadHistory()" title="刷新历史">&#8635;</span>
+                    </div>
+                    <ul class="uh-list" id="uploadHistoryList">
+                        <li class="uh-empty">加载中...</li>
+                    </ul>
+                </div>
             </div>
 
             <!-- 上右: 汽车销售统计图 (第二部分 - Matplotlib 自定义参数) -->
