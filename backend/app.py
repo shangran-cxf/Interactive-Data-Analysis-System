@@ -17,6 +17,7 @@ from database import (
     get_user_price_distribution, get_user_energy_ratio, get_user_sales_chart,
     get_all_users, get_user_uploads, get_all_uploads
 )
+from chart_generator import generate_chart, get_config
 
 app = Flask(
     __name__,
@@ -313,6 +314,69 @@ def api_sales_chart():
 @login_required
 def api_vehicles():
     return jsonify(get_user_vehicles(get_uid()))
+
+
+# ── Matplotlib 汽车销售统计图 API (第二部分) ──
+
+@app.route('/api/chart/config')
+@login_required
+def api_chart_config():
+    """返回图表参数配置 (图表类型, 颜色主题等)"""
+    return jsonify(get_config())
+
+
+@app.route('/api/chart/generate', methods=['POST'])
+@login_required
+def api_chart_generate():
+    """
+    根据用户自定义参数, 使用 Matplotlib 生成汽车销售统计图
+    请求体 (JSON):
+        {
+            "chart_type": "bar|line|bar_line|pie|scatter|horizontal_bar|stacked_bar|radar",
+            "theme": "tech|nature|warm|classic|rainbow",
+            "top_n": 15,
+            "sort_by": "sales_volume|sales_price|brand",
+            "sort_order": "asc|desc",
+            "title": "自定义标题",
+            "show_value": true,
+            "grid_on": true,
+            "energy_filter": "all|油车|电车|混动"
+        }
+    返回:
+        { "success": true, "image_base64": "data:image/png;base64,...", "info": {...} }
+    """
+    uid = get_uid()
+    try:
+        # 获取用户车辆数据
+        vehicles = get_user_vehicles(uid)
+        if not vehicles:
+            return jsonify({"success": False, "error": "请先上传数据"}), 400
+
+        # 解析用户自定义参数
+        params = request.get_json(force=True, silent=True) or {}
+        # 确保布尔值正确解析
+        for key in ['show_value', 'grid_on']:
+            if key in params:
+                params[key] = bool(params[key])
+
+        # 生成图表
+        result = generate_chart(vehicles, params)
+
+        if result['success']:
+            return jsonify({
+                "success": True,
+                "image_base64": f"data:image/png;base64,{result['image_base64']}",
+                "info": result['info']
+            })
+        else:
+            return jsonify({
+                "success": False,
+                "message": result.get('error', '图表生成失败'),
+                "info": result.get('info', {})
+            }), 400
+
+    except Exception as e:
+        return jsonify({"success": False, "message": f"服务器异常: {str(e)}"}), 500
 
 
 # ── AI Evaluation ──
