@@ -1,5 +1,9 @@
 # Interactive Data Analysis System — 汽车数据可视化大屏
 
+
+hello world!
+
+
 基于 Flask + ECharts 的汽车销售数据可视化分析平台，采用科幻科技风格设计。
 
 ## 功能特性
