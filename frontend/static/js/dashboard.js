@@ -81,6 +81,17 @@ async function handleFile(file) {
             showStatus(d.message, 'success');
             if (d.report) showReport(d.report, d.download_url);
             refreshAllData();
+
+            // ── 新增：触发 ML 重训练 ──
+            corrLoaded = false;
+            clusterLoaded = false;
+            clusterChartInstance = null;
+            fetch('/api/ml/retrain', { method: 'POST' })
+                .then(() => {
+                    mlInit();
+                    showStatus('模型已更新', 'success');
+                })
+                .catch(() => {}); // 静默失败，不影响主流程
         } else showStatus(d.message, 'error');
     } catch(e) { showStatus('上传失败: ' + e.message, 'error'); }
 }
@@ -464,6 +475,275 @@ async function refreshAllData() {
         console.error('refresh error:', e);
     }
 }
+
+// ════════════════════════════════════════
+//  ML 智能分析模块
+// ════════════════════════════════════════
+
+// Tab 切换
+document.querySelectorAll('.ml-tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.ml-tab').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.ml-tab-content').forEach(c => c.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+    // 懒加载
+    if (btn.dataset.tab === 'correlation') loadCorrelation();
+    if (btn.dataset.tab === 'cluster')     loadCluster();
+  });
+});
+
+// 初始化：加载模型状态
+async function mlInit() {
+  try {
+    const res = await fetch('/api/ml/model-info');
+    const data = await res.json();
+    const badge = document.getElementById('mlModelBadge');
+    if (!data.ready) {
+      badge.textContent = '待训练';
+      badge.className = 'ml-model-badge warn';
+    } else if (data.mode === 'exploratory') {
+      badge.textContent = `探索模式 · ${data.dataPoints}条`;
+      badge.className = 'ml-model-badge warn';
+    } else {
+      badge.textContent = `R²=${data.r2} · ${data.dataPoints}条`;
+      badge.className = 'ml-model-badge';
+    }
+  } catch(e) {
+    document.getElementById('mlModelBadge').textContent = '离线';
+    document.getElementById('mlModelBadge').className = 'ml-model-badge err';
+  }
+}
+
+// 销量预测
+async function mlPredict() {
+  const price = parseFloat(document.getElementById('mlPrice').value);
+  const energy = document.getElementById('mlEnergy').value;
+  if (!price || price <= 0) {
+    alert('请输入有效价格');
+    return;
+  }
+  const btn = document.getElementById('mlPredictBtn');
+  btn.textContent = '预测中...';
+  btn.disabled = true;
+
+  try {
+    const res  = await fetch('/api/ml/predict', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ price, energyType: energy })
+    });
+    const data = await res.json();
+
+    if (!data.success) {
+      // 模型未训练时自动触发训练
+      if (data.error && data.error.includes('未就绪')) {
+        btn.textContent = '训练中...';
+        await fetch('/api/ml/retrain', { method: 'POST' });
+        btn.textContent = '预测';
+        btn.disabled = false;
+        mlPredict();
+        return;
+      }
+      alert(data.error);
+      return;
+    }
+
+    const pred = data.prediction;
+    document.getElementById('resMonthly').textContent =
+      pred.monthlySales.toLocaleString() + ' 辆';
+    document.getElementById('resAnnual').textContent =
+      pred.annualSales.toLocaleString() + ' 辆';
+    document.getElementById('resCI').textContent =
+      `[${pred.confidenceInterval[0].toLocaleString()}, ${pred.confidenceInterval[1].toLocaleString()}]`;
+    document.getElementById('resEquation').textContent = data.equation || '';
+
+    const warn = document.getElementById('resWarning');
+    if (data.modelMetrics && data.modelMetrics.mode === 'exploratory') {
+      warn.textContent = '⚠ 数据量较小，当前为趋势参考，非精确预测';
+      warn.style.display = 'block';
+    } else {
+      warn.style.display = 'none';
+    }
+
+    document.getElementById('mlPredictResult').style.display = 'flex';
+    document.getElementById('mlPredictEmpty').style.display = 'none';
+    mlInit(); // 刷新 badge
+  } catch(e) {
+    alert('请求失败：' + e.message);
+  } finally {
+    btn.textContent = '预测';
+    btn.disabled = false;
+  }
+}
+
+// 关系分析
+let corrLoaded = false;
+async function loadCorrelation(stratify) {
+  if (corrLoaded && !stratify) return;
+  document.getElementById('corrLoading').style.display = 'block';
+  document.getElementById('corrContent').style.display = 'none';
+
+  try {
+    const url = '/api/ml/correlation' + (stratify ? `?stratify=${stratify}` : '');
+    const res  = await fetch(url);
+    const data = await res.json();
+    if (!data.success) return;
+
+    // 更新按钮状态
+    document.querySelectorAll('.ml-stratify-btns .ml-btn-sm').forEach((b, i) => {
+      b.classList.toggle('active', (i === 0 && !stratify) || (i === 1 && !!stratify));
+    });
+
+    const ov = data.overall;
+    document.getElementById('corrPearson').textContent =
+      (ov.pearsonR >= 0 ? '+' : '') + ov.pearsonR;
+    document.getElementById('corrInterpret').textContent = ov.interpretation;
+
+    // 分层
+    const stratifyDiv = document.getElementById('corrStratify');
+    if (data.byEnergyType) {
+      const html = Object.entries(data.byEnergyType).map(([k, v]) =>
+        `<div class="ml-stratify-row">
+           <span>${k}（n=${v.n}）</span>
+           <span>${v.r !== undefined ? (v.r >= 0 ? '+' : '') + v.r : v.note}
+             ${v.significant ? ' ★' : ''}</span>
+         </div>`
+      ).join('');
+      document.getElementById('corrStratifyContent').innerHTML = html;
+      stratifyDiv.style.display = 'block';
+    } else {
+      stratifyDiv.style.display = 'none';
+    }
+
+    // 反例
+    const countersHtml = (data.counterExamples || []).map(c =>
+      `<div class="ml-counter-row">
+         <span>${c.model}（${c.price}万）</span>
+         <span>${c.reason}</span>
+       </div>`
+    ).join('') || '<div class="ml-empty">暂无典型反例</div>';
+    document.getElementById('corrCounters').innerHTML = countersHtml;
+
+    // 价格区间
+    const maxSales = Math.max(...(data.priceSegments || []).map(s => s.avgSales));
+    const segHtml = (data.priceSegments || []).map(s => {
+      const pct = maxSales > 0 ? Math.round(s.avgSales / maxSales * 100) : 0;
+      return `<div class="ml-segment-row">
+        <span style="width:60px;color:rgba(255,255,255,0.6)">${s.range}</span>
+        <div class="ml-segment-bar-wrap">
+          <div class="ml-segment-bar" style="width:${pct}%"></div>
+        </div>
+        <span style="color:#00ffb4;font-size:11px;width:70px;text-align:right">
+          ${s.avgSales > 0 ? s.avgSales.toLocaleString() + '辆' : '—'}
+        </span>
+      </div>`;
+    }).join('');
+    document.getElementById('corrSegments').innerHTML = segHtml;
+
+    document.getElementById('corrLoading').style.display = 'none';
+    document.getElementById('corrContent').style.display = 'block';
+    corrLoaded = true;
+  } catch(e) {
+    document.getElementById('corrLoading').textContent = '加载失败';
+  }
+}
+
+// 聚类分析
+let clusterLoaded = false;
+let clusterChartInstance = null;
+
+async function loadCluster() {
+  if (clusterLoaded) return;
+  document.getElementById('clusterLoading').style.display = 'block';
+  document.getElementById('clusterContent').style.display = 'none';
+
+  try {
+    const res  = await fetch('/api/ml/cluster?k=3');
+    const data = await res.json();
+    if (!data.success) return;
+
+    const colors = ['#ff6b6b', '#00d4ff', '#00ffb4'];
+    const cardsHtml = data.clusters.map((c, i) =>
+      `<div class="ml-cluster-card">
+         <div class="ml-cluster-label">🏷 ${c.label}（${c.count}款）</div>
+         <div class="ml-cluster-meta">
+           均价 ${c.avgPrice}万 · 月均销量 ${c.avgSales.toLocaleString()}辆
+         </div>
+         <div class="ml-cluster-brands">${c.brands.join(' · ')}</div>
+       </div>`
+    ).join('');
+    document.getElementById('clusterCards').innerHTML = cardsHtml;
+
+    // 存散点图数据备用
+    window._clusterScatterData = { data, colors };
+
+    document.getElementById('clusterLoading').style.display = 'none';
+    document.getElementById('clusterContent').style.display = 'block';
+    clusterLoaded = true;
+  } catch(e) {
+    document.getElementById('clusterLoading').textContent = '加载失败';
+  }
+}
+
+function toggleClusterChart() {
+  const wrap = document.getElementById('clusterChartWrap');
+  const btn  = document.getElementById('clusterChartBtn');
+  const isHidden = wrap.style.display === 'none';
+  wrap.style.display = isHidden ? 'block' : 'none';
+  btn.textContent = isHidden ? '收起散点图' : '查看散点图';
+
+  if (isHidden && window._clusterScatterData && !clusterChartInstance) {
+    renderClusterChart(window._clusterScatterData);
+  }
+}
+
+function renderClusterChart({ data, colors }) {
+  // 复用项目已有的 echarts 全局变量
+  const chart = echarts.init(document.getElementById('clusterChart'));
+  clusterChartInstance = chart;
+
+  const series = data.clusters.map((c, i) => ({
+    name: c.label,
+    type: 'scatter',
+    data: c.vehicles.map(v => [v.price, v.sales, v.model]),
+    itemStyle: { color: colors[i], opacity: 0.85 },
+    symbolSize: 8,
+  }));
+
+  chart.setOption({
+    backgroundColor: 'transparent',
+    tooltip: {
+      formatter: p => `${p.data[2]}<br/>价格: ${p.data[0]}万<br/>月销: ${p.data[1].toLocaleString()}辆`
+    },
+    legend: {
+      data: data.clusters.map(c => c.label),
+      textStyle: { color: 'rgba(255,255,255,0.5)', fontSize: 10 },
+      bottom: 0
+    },
+    grid: { top: 10, left: 40, right: 10, bottom: 40 },
+    xAxis: {
+      name: '价格(万)', nameTextStyle: { color: 'rgba(255,255,255,0.3)', fontSize: 10 },
+      axisLabel: { color: 'rgba(255,255,255,0.4)', fontSize: 10 },
+      splitLine: { lineStyle: { color: 'rgba(255,255,255,0.05)' } }
+    },
+    yAxis: {
+      name: '月销量', nameTextStyle: { color: 'rgba(255,255,255,0.3)', fontSize: 10 },
+      axisLabel: { color: 'rgba(255,255,255,0.4)', fontSize: 10 },
+      splitLine: { lineStyle: { color: 'rgba(255,255,255,0.05)' } }
+    },
+    series
+  });
+
+  window.addEventListener('resize', () => chart.resize());
+}
+
+// ── 数据上传后自动重训练 ──
+// 找到你项目里上传成功后的回调，加上这行：
+// await fetch('/api/ml/retrain', { method: 'POST' }); mlInit(); corrLoaded = false; clusterLoaded = false; clusterChartInstance = null;
+
+// 页面加载时初始化
+mlInit();
 
 // ═══════════════ Logout ═══════════════
 async function handleLogout() {
