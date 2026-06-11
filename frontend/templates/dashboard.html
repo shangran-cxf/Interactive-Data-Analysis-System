@@ -49,13 +49,13 @@
                 </div>
                 <div class="upload-status" id="uploadStatus"></div>
                 <button class="clean-custom-btn" onclick="openCleanModal()">自定义清洗策略</button>
+                <div class="cleaning-report-header" id="cleaningReportHeader">
+                    <span>数据清洗报告</span>
+                    <span class="eye-toggle" id="eyeToggle" onclick="toggleCleaning()">
+                        <span id="eyeIcon">&#9673;</span> <span id="eyeText">隐藏</span>
+                    </span>
+                </div>
                 <div class="cleaning-report" id="cleaningReport">
-                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
-                        <span style="color:var(--accent);font-size:9px;letter-spacing:1px">数据清洗报告</span>
-                        <span class="eye-toggle" id="eyeToggle" onclick="toggleCleaning()">
-                            <span>&#9673;</span> 隐藏
-                        </span>
-                    </div>
                     <div id="reportContent"></div>
                 </div>
 

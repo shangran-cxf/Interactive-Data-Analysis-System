@@ -191,8 +191,16 @@ body::before {
 .upload-status.success { background: rgba(120, 180, 140, 0.08); color: #8cb89a; border: 1px solid rgba(120, 180, 140, 0.15); }
 .upload-status.error { background: rgba(200, 120, 120, 0.08); color: #c87878; border: 1px solid rgba(200, 120, 120, 0.15); }
 
+.cleaning-report-header {
+  margin-top: 6px; display: none;
+  justify-content: space-between; align-items: center; margin-bottom: 0;
+  font-size: 9px; letter-spacing: 1px;
+}
+.cleaning-report-header span:first-child { color: var(--accent); }
+.cleaning-report-header.show { display: flex; }
+
 .cleaning-report {
-  margin-top: 6px; background: rgba(0,0,0,0.15); border-radius: 4px;
+  background: rgba(0,0,0,0.15); border-radius: 4px;
   padding: 6px 8px; font-size: 9px; display: none;
   border: 1px solid rgba(100, 150, 180, 0.06);
 }
