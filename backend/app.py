@@ -8,7 +8,6 @@ from functools import wraps
 from flask import Flask, render_template, request, jsonify, session, redirect, url_for, send_file
 import pandas as pd
 import numpy as np
-from scipy import stats as scipy_stats
 
 from database import (
     init_db, create_user, verify_user, get_user_by_id,
@@ -23,6 +22,7 @@ from ml.predictor import SalesPredictor
 from ml.correlation import CorrelationAnalyzer
 from ml.cluster import MarketSegmenter
 from chart_generator import generate_chart, get_config
+from data_clean import clean_dataframe, interactive_clean_dataframe, load_and_clean, df_to_echarts, df_to_records
 
 app = Flask(
     __name__,
@@ -140,65 +140,61 @@ def api_auth_status():
 
 
 # ── Data Upload & Processing ──
+# 数据清洗统一由 data_clean.py 处理
+# clean_dataframe()              — 核心清洗函数（自动模式）
+# interactive_clean_dataframe()  — 交互式清洗（用户自定义策略/缺失值+异常边界）
+# load_and_clean()               — 文件读取 + 清洗一站式封装
+# df_to_echarts()                — DataFrame → ECharts 前端格式
+# df_to_records()                — DataFrame → 前端 dict 列表
 
-def clean_dataframe(df: pd.DataFrame) -> dict:
-    report = {
-        "original_rows": len(df),
-        "missing_filled": 0,
-        "outliers_detected": 0,
-        "rows_removed": 0,
-        "final_rows": 0
-    }
 
-    col_map = {}
-    for col in df.columns:
-        cl = col.strip().lower()
-        if cl in ('brand', '品牌'): col_map[col] = 'brand'
-        elif cl in ('model', '车型', '型号'): col_map[col] = 'model'
-        elif cl in ('sales_volume', 'sales', '销量', '销售量', '销售辆数'): col_map[col] = 'sales_volume'
-        elif cl in ('sales_price', 'price', '价格', '售价', '销售价格', '价格(万)', '价格（万）'): col_map[col] = 'sales_price'
-        elif cl in ('energy_type', 'energy', 'fuel', '能源', '能源类型', '燃油类型', '动力类型'): col_map[col] = 'energy_type'
-    df.rename(columns=col_map, inplace=True)
+@app.route('/api/data/interactive-clean', methods=['POST'])
+@login_required
+def api_interactive_clean():
+    """交互式清洗 API — 前端交互面板提交自定义清洗策略"""
+    uid = get_uid()
+    vehicles = get_user_vehicles(uid)
+    if not vehicles:
+        return jsonify({"success": False, "message": "当前无车辆数据，请先上传文件"}), 400
 
-    required = ['brand', 'model', 'sales_volume', 'sales_price', 'energy_type']
-    missing_cols = [c for c in required if c not in df.columns]
-    if missing_cols:
-        raise ValueError(f"缺少必需列: {', '.join(missing_cols)}")
+    data = request.get_json()
+    if not data or 'config' not in data:
+        return jsonify({"success": False, "message": "缺少清洗配置"}), 400
 
-    for col in ['sales_volume', 'sales_price']:
-        if df[col].isna().sum() > 0:
-            report['missing_filled'] += int(df[col].isna().sum())
-            df[col] = df[col].fillna(df[col].median())
+    config = data['config']
 
-    df['brand'] = df['brand'].fillna('未知品牌')
-    df['model'] = df['model'].fillna('未知车型')
-    df['energy_type'] = df['energy_type'].fillna('油车')
+    try:
+        df = pd.DataFrame(vehicles)
+    except Exception as e:
+        return jsonify({"success": False, "message": f"构造数据失败: {str(e)}"}), 500
 
-    for col in ['sales_volume', 'sales_price']:
-        if len(df) > 3:
-            z_scores = np.abs(scipy_stats.zscore(df[col].dropna()))
-            outlier_mask = z_scores > 3
-            report['outliers_detected'] += int(outlier_mask.sum())
-            mean_val = df[col].mean()
-            std_val = df[col].std()
-            upper = mean_val + 3 * std_val
-            lower = max(0, mean_val - 3 * std_val)
-            df[col] = df[col].clip(lower, upper)
+    try:
+        report, df_clean = interactive_clean_dataframe(df, config)
 
-    before = len(df)
-    df = df[~df['brand'].isin(['未知品牌', ''])]
-    df = df[~df['model'].isin(['未知车型', ''])]
-    report['rows_removed'] = before - len(df)
+        if df_clean.empty:
+            return jsonify({"success": False, "message": "清洗后无有效数据"}), 400
 
-    energy_map = {
-        '油车': '油车', '燃油车': '油车', '汽油车': '油车', '汽油': '油车', '燃油': '油车',
-        '电车': '电车', '电动': '电车', '纯电动': '电车', '新能源': '电车', '纯电': '电车',
-        '混动': '混动', '油电混合': '混动', '插电混动': '混动', '插混': '混动', '混合动力': '混动',
-    }
-    df['energy_type'] = df['energy_type'].map(lambda x: energy_map.get(str(x).strip(), str(x).strip()))
+        # 更新数据库
+        records = df_to_records(df_clean)
+        clear_user_vehicles(uid)
+        insert_user_vehicles(uid, records)
 
-    report['final_rows'] = len(df)
-    return report, df
+        # 生成 echarts 数据供前端刷新
+        echarts_data = df_to_echarts(df_clean)
+        # 更新摘要
+        write_user_summary(session.get('username'), records)
+
+        return jsonify({
+            "success": True,
+            "message": f"交互式清洗完成！最终 {len(records)} 条数据",
+            "report": report,
+            "echarts": echarts_data,
+        })
+
+    except ValueError as e:
+        return jsonify({"success": False, "message": str(e)}), 400
+    except Exception as e:
+        return jsonify({"success": False, "message": f"清洗异常: {str(e)}"}), 500
 
 
 def write_user_summary(username: str, records: list) -> dict:
@@ -260,6 +256,9 @@ def api_upload():
             return jsonify({"success": False, "message": "清洗后无有效数据"}), 400
 
         # Store per user — 归档为历史批次，并设为当前生效数据
+        # 确保 sales_volume 和 sales_price 是纯数值类型，兼容数据库 schema
+        df['sales_volume'] = df['sales_volume'].fillna(0).astype(int)
+        df['sales_price'] = df['sales_price'].fillna(0).round(2)
         records = df[['brand', 'model', 'sales_volume', 'sales_price', 'energy_type']].to_dict('records')
         upload_id = record_upload(uid, file.filename, len(records))
         archive_upload_vehicles(upload_id, records)   # 历史归档（可回溯）
@@ -275,10 +274,28 @@ def api_upload():
         excel_path = os.path.join(app.config['UPLOAD_FOLDER'], excel_name)
         df.to_excel(excel_path, index=False, engine='openpyxl')
 
+        # 构造前端兼容的清洗报告
+        def _compat_report(r):
+            missing_total = sum(
+                v if isinstance(v, (int, float)) else (v.get('count', 0) if isinstance(v, dict) else 0)
+                for v in r.get('missing_filled', {}).values()
+            ) if isinstance(r.get('missing_filled'), dict) else (r.get('missing_filled', 0) or 0)
+            outliers_total = sum(
+                v if isinstance(v, (int, float)) else (v.get('count', 0) if isinstance(v, dict) else 0)
+                for v in r.get('outliers_handled', {}).values()
+            ) if isinstance(r.get('outliers_handled'), dict) else (r.get('outliers_detected', 0) or 0)
+            return {
+                "original_rows": r.get('original_rows', len(records)),
+                "missing_filled": int(missing_total),
+                "outliers_detected": int(outliers_total),
+                "rows_removed": int(r.get('duplicates_removed', 0)),
+                "final_rows": r.get('final_rows', len(records)),
+            }
+
         return jsonify({
             "success": True,
             "message": f"上传成功！共导入 {len(records)} 条数据",
-            "report": report,
+            "report": _compat_report(report),
             "download_url": f"/api/data/download/{excel_name}"
         })
 

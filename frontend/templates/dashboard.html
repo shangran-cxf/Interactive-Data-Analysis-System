@@ -48,6 +48,7 @@
                     </button>
                 </div>
                 <div class="upload-status" id="uploadStatus"></div>
+                <button class="clean-custom-btn" onclick="openCleanModal()">自定义清洗策略</button>
                 <div class="cleaning-report" id="cleaningReport">
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
                         <span style="color:var(--accent);font-size:9px;letter-spacing:1px">数据清洗报告</span>
@@ -272,6 +273,52 @@
                     </div>
                 </div>
             </div>
+        </div>
+    </div>
+
+    <!-- ═══════ 交互式清洗弹窗 ═══════ -->
+    <div class="modal-overlay" id="cleanModalOverlay" style="display:none">
+        <div class="modal-panel" id="cleanModal">
+            <div class="modal-header">
+                <span class="modal-title">自定义数据清洗</span>
+                <button class="modal-close" onclick="closeCleanModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="cfg-section">
+                    <div class="cfg-label">空白（缺失）数据处理</div>
+                    <div class="cfg-options">
+                        <label class="cfg-radio"><input type="radio" name="missingAction" value="default" checked onchange="onMissingActionChange()"> 填充系统默认值</label>
+                        <label class="cfg-radio"><input type="radio" name="missingAction" value="drop" onchange="onMissingActionChange()"> 直接舍弃该行</label>
+                        <label class="cfg-radio"><input type="radio" name="missingAction" value="custom" onchange="onMissingActionChange()"> 手动输入填充值</label>
+                    </div>
+                </div>
+                <div class="cfg-section" id="customFillSection" style="display:none">
+                    <div class="cfg-label">自定义填充值</div>
+                    <div class="cfg-grid">
+                        <div class="cfg-field"><span>品牌</span><input type="text" id="fillBrand" value="未知品牌"></div>
+                        <div class="cfg-field"><span>车型</span><input type="text" id="fillModel" value="未知车型"></div>
+                        <div class="cfg-field"><span>销量</span><input type="number" id="fillVolume" value="0"></div>
+                        <div class="cfg-field"><span>售价（万）</span><input type="number" id="fillPrice" value="0" step="0.1"></div>
+                        <div class="cfg-field"><span>能源类型</span><select id="fillEnergy"><option value="油车">油车</option><option value="电车">电车</option><option value="混动">混动</option></select></div>
+                    </div>
+                </div>
+                <div class="cfg-section">
+                    <div class="cfg-label">异常数据判定（数值边界范围）</div>
+                    <div class="cfg-grid">
+                        <div class="cfg-field"><span>销量下限</span><input type="number" id="volMin" placeholder="不限"></div>
+                        <div class="cfg-field"><span>销量上限</span><input type="number" id="volMax" placeholder="不限"></div>
+                        <div class="cfg-field"><span>售价下限（万）</span><input type="number" id="priceMin" placeholder="不限" step="0.1"></div>
+                        <div class="cfg-field"><span>售价上限（万）</span><input type="number" id="priceMax" placeholder="不限" step="0.1"></div>
+                    </div>
+                    <div class="cfg-hint">留空则使用 Z-score (|Z|>3) 自动检测异常值</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <div class="modal-status" id="cleanModalStatus"></div>
+                <button class="modal-btn cancel" onclick="closeCleanModal()">取消</button>
+                <button class="modal-btn confirm" id="cleanExecuteBtn" onclick="executeInteractiveClean()">执行清洗</button>
+            </div>
+            <div class="modal-report" id="cleanModalReport" style="display:none"></div>
         </div>
     </div>
 
