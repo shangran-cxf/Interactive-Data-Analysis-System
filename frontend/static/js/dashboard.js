@@ -105,7 +105,10 @@ function showStatus(msg, type) {
 }
 
 function showReport(r, downloadUrl) {
+    document.getElementById('cleaningReportHeader').classList.add('show');
     document.getElementById('cleaningReport').classList.add('show');
+    document.getElementById('eyeIcon').innerHTML = '&#9673;';
+    document.getElementById('eyeText').textContent = '隐藏';
     const rows = [
         ['原始行数', r.original_rows], ['缺失填充', r.missing_filled],
         ['异常处理', r.outliers_detected], ['移除无效行', r.rows_removed],
@@ -124,9 +127,17 @@ function showReport(r, downloadUrl) {
 
 function toggleCleaning() {
     const el = document.getElementById('cleaningReport');
-    const t = document.getElementById('eyeToggle');
-    if (el.classList.contains('show')) { el.classList.remove('show'); t.innerHTML = '<span>&#9678;</span> 显示'; }
-    else { el.classList.add('show'); t.innerHTML = '<span>&#9673;</span> 隐藏'; }
+    const icon = document.getElementById('eyeIcon');
+    const text = document.getElementById('eyeText');
+    if (el.classList.contains('show')) {
+        el.classList.remove('show');
+        icon.innerHTML = '&#9678;';
+        text.textContent = '显示';
+    } else {
+        el.classList.add('show');
+        icon.innerHTML = '&#9673;';
+        text.textContent = '隐藏';
+    }
 }
 
 // ═══════════════ Init Charts ═══════════════
