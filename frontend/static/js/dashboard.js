@@ -978,6 +978,112 @@ async function generateMplChart() {
     }
 }
 
+// ═══════════════ Interactive Cleaning Modal ═══════════════
+function openCleanModal() {
+    document.getElementById('cleanModalOverlay').style.display = 'flex';
+    document.getElementById('cleanModalReport').style.display = 'none';
+    document.getElementById('cleanModalStatus').textContent = '';
+    document.getElementById('cleanExecuteBtn').disabled = false;
+    const radios = document.getElementsByName('missingAction');
+    radios.forEach(r => { if (r.value === 'default') r.checked = true; });
+    onMissingActionChange();
+}
+
+function closeCleanModal() {
+    document.getElementById('cleanModalOverlay').style.display = 'none';
+}
+
+function onMissingActionChange() {
+    const val = document.querySelector('input[name="missingAction"]:checked').value;
+    document.getElementById('customFillSection').style.display = val === 'custom' ? 'block' : 'none';
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    const overlay = document.getElementById('cleanModalOverlay');
+    if (overlay) {
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) closeCleanModal();
+        });
+    }
+});
+
+async function executeInteractiveClean() {
+    const btn = document.getElementById('cleanExecuteBtn');
+    const status = document.getElementById('cleanModalStatus');
+    btn.disabled = true; btn.textContent = '清洗中...';
+    status.textContent = ''; status.className = 'modal-status';
+
+    const missingAction = document.querySelector('input[name="missingAction"]:checked').value;
+    let customFill = {};
+    if (missingAction === 'custom') {
+        customFill = {
+            brand: document.getElementById('fillBrand').value || '未知品牌',
+            model: document.getElementById('fillModel').value || '未知车型',
+            sales_volume: document.getElementById('fillVolume').value || '0',
+            sales_price: document.getElementById('fillPrice').value || '0',
+            energy_type: document.getElementById('fillEnergy').value || '油车',
+        };
+    }
+    const vMin = document.getElementById('volMin').value, vMax = document.getElementById('volMax').value;
+    const pMin = document.getElementById('priceMin').value, pMax = document.getElementById('priceMax').value;
+    const outlierRanges = {};
+    if (vMin || vMax) { outlierRanges.sales_volume = {}; if (vMin) outlierRanges.sales_volume.min = parseFloat(vMin); if (vMax) outlierRanges.sales_volume.max = parseFloat(vMax); }
+    if (pMin || pMax) { outlierRanges.sales_price = {}; if (pMin) outlierRanges.sales_price.min = parseFloat(pMin); if (pMax) outlierRanges.sales_price.max = parseFloat(pMax); }
+
+    try {
+        const r = await fetch('/api/data/interactive-clean', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ config: { missing_action: missingAction, custom_fill: customFill, outlier_ranges: outlierRanges } })
+        });
+        const d = await r.json();
+        if (d.success) {
+            status.textContent = d.message; status.className = 'modal-status success';
+            if (d.report) showInteractiveReport(d.report);
+            refreshAllData();
+        } else {
+            status.textContent = d.message; status.className = 'modal-status error';
+        }
+    } catch (e) {
+        status.textContent = '请求失败: ' + e.message; status.className = 'modal-status error';
+    } finally {
+        btn.disabled = false; btn.textContent = '执行清洗';
+    }
+}
+
+function showInteractiveReport(report) {
+    const el = document.getElementById('cleanModalReport');
+    el.style.display = 'block';
+    let missingHtml = '';
+    const mf = report.missing_filled || {};
+    if (report.missing_action === 'drop' && (report.missing_dropped||0) > 0) {
+        missingHtml = `<div class="rep-row"><span>舍弃缺失行</span><span>${report.missing_dropped} 行</span></div>`;
+    } else if (Object.keys(mf).length > 0) {
+        missingHtml = Object.entries(mf).map(([col, info]) => {
+            const cnt = typeof info === 'object' ? info.count : info;
+            const val = typeof info === 'object' ? info.value : '';
+            return `<div class="rep-row"><span>${col} 填充</span><span>${cnt} 个 → 「${val}」</span></div>`;
+        }).join('');
+    } else {
+        missingHtml = '<div class="rep-row"><span>缺失值</span><span>无</span></div>';
+    }
+    let outlierHtml = '';
+    const detail = report.outliers_detail || {};
+    if (Object.keys(detail).length > 0) {
+        outlierHtml = Object.entries(detail).map(([col, info]) =>
+            `<div class="rep-row"><span>${col} 异常</span><span>${info.count} 个 → 替换为中位数 ${info.replaced_with}</span></div>`
+        ).join('');
+    } else {
+        outlierHtml = '<div class="rep-row"><span>异常值</span><span>无</span></div>';
+    }
+    el.innerHTML = `
+        <div class="rep-title">清洗报告</div>
+        <div class="rep-row"><span>原始行数</span><span>${report.original_rows}</span></div>
+        <div class="rep-row"><span>重复行删除</span><span>${report.duplicates_removed}</span></div>
+        ${missingHtml}${outlierHtml}
+        <div class="rep-row"><span>最终行数</span><span style="color:var(--accent)">${report.final_rows}</span></div>
+        ${(report.warnings||[]).map(w => `<div class="rep-warn">⚠ ${w}</div>`).join('')}`;
+}
+
 // 在页面初始化完成后加载图表配置 (覆盖原 init 的 refresh)
 document.addEventListener('DOMContentLoaded', () => {
     setTimeout(() => {
