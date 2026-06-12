@@ -936,6 +936,16 @@ function toggleParamPanel() {
     panel.style.display = (panel.style.display === 'none' || panel.style.display === '') ? 'block' : 'none';
 }
 
+let mplBase64 = null; // 缓存最新生成的 Matplotlib 图表
+
+function downloadMplChart() {
+    if (!mplBase64) return;
+    const a = document.createElement('a');
+    a.href = mplBase64;
+    a.download = 'chart_' + new Date().toISOString().slice(0,10) + '.png';
+    a.click();
+}
+
 // 根据当前参数生成 Matplotlib 图表
 async function generateMplChart() {
     const infoEl = document.getElementById('chartInfo');
@@ -967,6 +977,7 @@ async function generateMplChart() {
         const result = await resp.json();
 
         if (result.success && result.image_base64) {
+            mplBase64 = result.image_base64;
             // 显示生成的 Matplotlib 图片
             if (mplImage) {
                 mplImage.src = result.image_base64;
@@ -979,6 +990,8 @@ async function generateMplChart() {
                 const info = result.info;
                 infoEl.innerHTML = `✓ <b>${info.title}</b> | 类型: ${info.chart_type} | 主题: ${info.theme} | 数据: ${info.data_count}条 | 总销量: ${info.total_sales.toLocaleString()}辆 | 均价: ${info.avg_price}万元 | 字体: ${info.font_used}`;
             }
+            const dnBtn = document.getElementById('btnDownload');
+            if (dnBtn) dnBtn.style.display = 'inline-block';
         } else {
             if (infoEl) infoEl.innerHTML = `<span style="color:#c07878">✗ ${result.message || '图表生成失败'}</span>`;
         }
