@@ -592,6 +592,40 @@ def ml_predict():
         predictor.train(vehicles)
     return jsonify(predictor.predict(float(price), energy_type, month))
 
+@app.route('/api/ml/predict-chart', methods=['GET'])
+@login_required
+def ml_predict_chart():
+    """返回全量预测对比数据供前端 ECharts 可视化"""
+    uid = get_uid()
+    vehicles = get_user_vehicles(uid)
+    if not vehicles:
+        return jsonify({"success": False, "error": "请先上传数据"}), 400
+    predictor = SalesPredictor(uid)
+    result = predictor.predict_all(vehicles)
+    return jsonify(result)
+
+
+@app.route('/api/ml/predict-trend', methods=['GET'])
+@login_required
+def ml_predict_trend():
+    """返回价格-销量预测趋势数据（油车/电车/混动三条曲线）"""
+    uid = get_uid()
+    vehicles = get_user_vehicles(uid)
+    if not vehicles:
+        return jsonify({"success": False, "error": "请先上传数据"}), 400
+    predictor = SalesPredictor(uid)
+    # 支持自定义价格区间参数: ?prices=5,10,15,20,25,30
+    prices_str = request.args.get('prices', '')
+    price_range = None
+    if prices_str:
+        try:
+            price_range = [float(p.strip()) for p in prices_str.split(',') if p.strip()]
+        except ValueError:
+            pass
+    result = predictor.predict_trend(vehicles, price_range)
+    return jsonify(result)
+
+
 @app.route('/api/ml/correlation', methods=['GET'])
 def ml_correlation():
     user_id, vehicles = _get_user_vehicles()

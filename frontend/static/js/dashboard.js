@@ -578,6 +578,10 @@ document.querySelectorAll('.ml-tab').forEach(btn => {
     btn.classList.add('active');
     document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
     // 懒加载
+    if (btn.dataset.tab === 'predict') {
+      if (predictionTrendChartInstance) predictionTrendChartInstance.resize();
+      if (predictionChartInstance) predictionChartInstance.resize();
+    }
     if (btn.dataset.tab === 'correlation') loadCorrelation();
     if (btn.dataset.tab === 'cluster')     loadCluster();
   });
@@ -592,12 +596,16 @@ async function mlInit() {
     if (!data.ready) {
       badge.textContent = '待训练';
       badge.className = 'ml-model-badge warn';
-    } else if (data.mode === 'exploratory') {
-      badge.textContent = `探索模式 · ${data.dataPoints}条`;
-      badge.className = 'ml-model-badge warn';
     } else {
-      badge.textContent = `R²=${data.r2} · ${data.dataPoints}条`;
-      badge.className = 'ml-model-badge';
+      if (data.mode === 'exploratory') {
+        badge.textContent = `探索模式 · ${data.dataPoints}条`;
+        badge.className = 'ml-model-badge warn';
+      } else {
+        badge.textContent = `R²=${data.r2} · ${data.dataPoints}条`;
+        badge.className = 'ml-model-badge';
+      }
+      // 模型已就绪，加载全量预测对比图表
+      loadPredictionChart();
     }
   } catch(e) {
     document.getElementById('mlModelBadge').textContent = '离线';
@@ -664,6 +672,283 @@ async function mlPredict() {
   } finally {
     btn.textContent = '预测';
     btn.disabled = false;
+  }
+}
+
+// ── ② 价格-销量预测趋势 ──
+async function loadPredictionTrend() {
+  try {
+    const res = await fetch('/api/ml/predict-trend');
+    const data = await res.json();
+    if (!data.success) {
+      document.getElementById('mlTrendSection').style.display = 'none';
+      document.getElementById('mlTrendEmpty').style.display = 'block';
+      return;
+    }
+    renderPredictionTrend(data);
+    // 同时填充分析结论
+    showConclusions(data.conclusions || []);
+  } catch(e) {
+    console.error('loadPredictionTrend:', e);
+  }
+}
+
+function renderPredictionTrend(data) {
+  const container = document.getElementById('predictionTrendChart');
+  if (!container) return;
+
+  if (predictionTrendChartInstance) {
+    predictionTrendChartInstance.dispose();
+  }
+
+  predictionTrendChartInstance = echarts.init(container);
+
+  const colors = { '电车': '#00d4ff', '混动': '#ffd166', '油车': '#c07878' };
+
+  const series = Object.keys(data.series).map(et => ({
+    name: et,
+    type: 'line',
+    smooth: true,
+    symbol: 'circle',
+    symbolSize: 8,
+    data: data.series[et],
+    lineStyle: { width: 3, color: colors[et] || '#6aafcf' },
+    itemStyle: { color: colors[et] || '#6aafcf' },
+    emphasis: { focus: 'series' }
+  }));
+
+  const option = {
+    tooltip: {
+      trigger: 'axis',
+      backgroundColor: 'rgba(10,20,34,0.95)',
+      borderColor: 'rgba(130,160,180,0.2)',
+      textStyle: { color: '#c8cdd4', fontSize: 10 },
+      formatter: function(params) {
+        let html = `<b>售价 ${params[0].axisValue} 万元</b><br/>`;
+        params.forEach(p => {
+          html += `${p.marker} ${p.seriesName}: <b>${p.value.toLocaleString()}</b> 辆/月<br/>`;
+        });
+        return html;
+      }
+    },
+    legend: {
+      data: ['油车', '电车', '混动'],
+      textStyle: { color: '#5e6670', fontSize: 9 },
+      top: 0, right: 0
+    },
+    grid: {
+      left: '3%', right: '5%', top: 28, bottom: 25, containLabel: true
+    },
+    xAxis: {
+      type: 'category',
+      name: '售价（万元）',
+      nameTextStyle: { color: '#5e6670', fontSize: 9 },
+      data: data.prices.map(p => p + '万'),
+      axisLabel: { color: '#5e6670', fontSize: 9 },
+      axisLine: { lineStyle: { color: 'rgba(100,150,180,0.12)' } },
+      axisTick: { show: false }
+    },
+    yAxis: {
+      type: 'value',
+      name: '预测月销量（辆）',
+      nameTextStyle: { color: '#5e6670', fontSize: 9 },
+      axisLabel: { color: '#5e6670', fontSize: 8 },
+      splitLine: { lineStyle: { color: 'rgba(180,200,210,0.04)' } }
+    },
+    series: series
+  };
+
+  predictionTrendChartInstance.setOption(option);
+
+  document.getElementById('mlTrendSection').style.display = 'block';
+  document.getElementById('mlTrendEmpty').style.display = 'none';
+  document.getElementById('mlExportBtn').style.display = 'inline-block';
+}
+
+// ── ③ 模型评估：实际 VS 预测 ──
+async function loadPredictionEval() {
+  try {
+    const res = await fetch('/api/ml/predict-chart');
+    const data = await res.json();
+    if (!data.success) {
+      document.getElementById('mlEvalSection').style.display = 'none';
+      document.getElementById('mlEvalEmpty').style.display = 'block';
+      return;
+    }
+    renderPredictionEval(data);
+  } catch(e) {
+    console.error('loadPredictionEval:', e);
+  }
+}
+
+function renderPredictionEval(data) {
+  const container = document.getElementById('predictionChart');
+  if (!container) return;
+
+  if (predictionChartInstance) {
+    predictionChartInstance.dispose();
+  }
+
+  predictionChartInstance = echarts.init(container);
+
+  const maxShow = 20;
+  const vehicles = data.vehicles.slice(0, maxShow);
+  const actual = data.actual.slice(0, maxShow);
+  const predicted = data.predicted.slice(0, maxShow);
+
+  const shortLabels = vehicles.map(v => {
+    const parts = v.split(' ');
+    return parts.length > 1 ? parts.slice(-1)[0].slice(0, 6) : v.slice(0, 6);
+  });
+
+  const option = {
+    tooltip: {
+      trigger: 'axis',
+      backgroundColor: 'rgba(10,20,34,0.95)',
+      borderColor: 'rgba(130,160,180,0.2)',
+      textStyle: { color: '#c8cdd4', fontSize: 10 },
+      formatter: function(params) {
+        const idx = params[0].dataIndex;
+        let html = `<b>${vehicles[idx]}</b><br/>`;
+        params.forEach(p => {
+          html += `${p.marker} ${p.seriesName}: ${p.value.toLocaleString()} 辆<br/>`;
+        });
+        const diff = actual[idx] - predicted[idx];
+        const pct = actual[idx] > 0 ? (Math.abs(diff) / actual[idx] * 100).toFixed(1) : 0;
+        html += `<span style="color:${diff >= 0 ? '#8cb89a' : '#c07878'}">误差: ${diff >= 0 ? '+' : ''}${diff.toLocaleString()} (${pct}%)</span>`;
+        return html;
+      }
+    },
+    legend: {
+      data: ['实际销量', '预测销量'],
+      textStyle: { color: '#5e6670', fontSize: 9 },
+      top: 0, right: 0
+    },
+    grid: {
+      left: '3%', right: '4%', top: 28, bottom: 30, containLabel: true
+    },
+    xAxis: {
+      type: 'category',
+      data: shortLabels,
+      axisLabel: { color: '#5e6670', fontSize: 8, rotate: 30 },
+      axisLine: { lineStyle: { color: 'rgba(100,150,180,0.12)' } },
+      axisTick: { show: false }
+    },
+    yAxis: {
+      type: 'value',
+      name: '销量（辆）',
+      nameTextStyle: { color: '#5e6670', fontSize: 9 },
+      axisLabel: { color: '#5e6670', fontSize: 8 },
+      splitLine: { lineStyle: { color: 'rgba(180,200,210,0.04)' } }
+    },
+    series: [
+      {
+        name: '实际销量', type: 'bar', data: actual,
+        itemStyle: { color: '#6aafcf', borderRadius: [3, 3, 0, 0] },
+        barWidth: '40%',
+        emphasis: { itemStyle: { color: '#8cc8e0' } }
+      },
+      {
+        name: '预测销量', type: 'line', smooth: true, data: predicted,
+        symbol: 'circle', symbolSize: 6,
+        lineStyle: { width: 2.5, color: '#ffd166' },
+        itemStyle: { color: '#ffd166' }
+      }
+    ]
+  };
+
+  predictionChartInstance.setOption(option);
+
+  // 更新统计指标
+  const statsEl = document.getElementById('mlEvalStats');
+  if (statsEl) {
+    const r2 = data.r2 !== undefined ? data.r2.toFixed(3) : '—';
+    const mae = data.mae !== undefined ? Math.round(data.mae).toLocaleString() : '—';
+    statsEl.innerHTML = `R²=<b style="color:#ffd166">${r2}</b> · MAE=<b style="color:#6aafcf">${mae}</b> 辆 · 共 <b>${data.data_points || 0}</b> 款`;
+  }
+
+  document.getElementById('mlEvalSection').style.display = 'block';
+  document.getElementById('mlEvalEmpty').style.display = 'none';
+}
+
+// ── 自动分析结论 ──
+function showConclusions(conclusions) {
+  const wrap = document.getElementById('mlConclusions');
+  const list = document.getElementById('mlConclusionsList');
+  if (!wrap || !list || !conclusions.length) return;
+  list.innerHTML = conclusions.map(c => `<li>${c}</li>`).join('');
+  wrap.style.display = 'block';
+}
+
+// ── 统一加载入口 ──
+async function loadPredictionChart() {
+  await Promise.all([
+    loadPredictionTrend(),
+    loadPredictionEval()
+  ]);
+}
+
+// ── 导出 ML 分析报告 ──
+async function exportMLReport() {
+  try {
+    const [trendRes, evalRes] = await Promise.all([
+      fetch('/api/ml/predict-trend'),
+      fetch('/api/ml/predict-chart')
+    ]);
+    const trend = await trendRes.json();
+    const evalData = await evalRes.json();
+
+    let md = '# 机器学习分析报告\n\n';
+    md += `> 生成时间: ${new Date().toLocaleString('zh-CN')}\n\n`;
+    md += '## 一、模型信息\n\n';
+    md += `- **算法**: 线性回归 (Linear Regression)\n`;
+    md += `- **特征**: 价格 + 能源类型 (One-Hot)\n`;
+    md += `- **数据量**: ${trend.data_points || '—'} 条\n`;
+    md += `- **R²**: ${trend.r2 !== undefined ? trend.r2.toFixed(4) : '—'}\n`;
+    md += `- **MAE**: ${trend.mae !== undefined ? trend.mae : '—'} 辆\n`;
+    md += `- **RMSE**: ${trend.rmse !== undefined ? trend.rmse : '—'} 辆\n`;
+    md += `- **模式**: ${trend.mode === 'predictive' ? '预测模式 ✅' : '探索模式 ⚠'}\n\n`;
+
+    md += '## 二、预测趋势数据\n\n';
+    if (trend.prices && trend.series) {
+      md += '| 价格 | 油车 | 电车 | 混动 |\n';
+      md += '|------|------|------|------|\n';
+      const ets = ['油车', '电车', '混动'];
+      trend.prices.forEach((p, i) => {
+        const vals = ets.map(e => (trend.series[e] || [])[i] || 0);
+        md += `| ${p}万 | ${vals[0]} | ${vals[1]} | ${vals[2]} |\n`;
+      });
+    }
+
+    md += '\n## 三、自动分析结论\n\n';
+    (trend.conclusions || []).forEach(c => { md += `- ${c}\n`; });
+
+    md += '\n## 四、模型评估数据\n\n';
+    md += `- 数据点数: ${evalData.data_points || '—'}\n`;
+    md += `- R²: ${evalData.r2 !== undefined ? evalData.r2.toFixed(4) : '—'}\n`;
+    md += `- MAE: ${evalData.mae !== undefined ? evalData.mae : '—'} 辆\n\n`;
+    md += '### 实际 VS 预测（前 10 款）\n\n';
+    md += '| 车型 | 实际销量 | 预测销量 | 误差 |\n';
+    md += '|------|----------|----------|------|\n';
+    const n = Math.min(10, (evalData.vehicles || []).length);
+    for (let i = 0; i < n; i++) {
+      const diff = evalData.actual[i] - evalData.predicted[i];
+      md += `| ${evalData.vehicles[i]} | ${evalData.actual[i]} | ${evalData.predicted[i]} | ${diff >= 0 ? '+' : ''}${diff} |\n`;
+    }
+
+    // 触发下载
+    const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `ML分析报告_${new Date().toISOString().slice(0,10)}.md`;
+    a.click();
+    URL.revokeObjectURL(url);
+
+    showStatus('ML 分析报告已导出', 'success');
+  } catch(e) {
+    console.error('exportMLReport:', e);
+    showStatus('导出失败: ' + e.message, 'error');
   }
 }
 
@@ -742,6 +1027,8 @@ async function loadCorrelation(stratify) {
 // 聚类分析
 let clusterLoaded = false;
 let clusterChartInstance = null;
+let predictionChartInstance = null;
+let predictionTrendChartInstance = null;
 
 async function loadCluster() {
   if (clusterLoaded) return;

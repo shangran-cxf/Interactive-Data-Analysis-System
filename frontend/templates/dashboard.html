@@ -197,6 +197,9 @@
 
                 <!-- Tab 1：销量预测 -->
                 <div class="ml-tab-content active" id="tab-predict">
+
+                    <!-- ① 单点销量预测 -->
+                    <div class="ml-section-label">① 单点销量预测</div>
                     <div class="ml-form">
                         <div class="ml-input-row">
                             <label>价格（万元）</label>
@@ -232,6 +235,33 @@
                         <div class="ml-warning" id="resWarning" style="display:none"></div>
                     </div>
                     <div class="ml-empty" id="mlPredictEmpty">请输入价格后点击预测</div>
+
+                    <!-- ② 价格-销量预测趋势 -->
+                    <div class="ml-section-label">② 价格-销量预测趋势</div>
+                    <div class="ml-trend-section" id="mlTrendSection" style="display:none">
+                        <div id="predictionTrendChart" style="height:200px"></div>
+                    </div>
+                    <div class="ml-empty" id="mlTrendEmpty" style="display:none">模型训练后可查看趋势</div>
+
+                    <!-- ③ 模型评估 -->
+                    <div class="ml-section-label">③ 模型评估</div>
+                    <div class="ml-eval-section" id="mlEvalSection" style="display:none">
+                        <div class="ml-eval-header">
+                            <span class="ml-eval-title">训练集拟合效果</span>
+                            <span class="ml-eval-stats" id="mlEvalStats"></span>
+                        </div>
+                        <div id="predictionChart" style="height:200px;margin-top:4px"></div>
+                        <!-- 自动分析结论 -->
+                        <div class="ml-conclusions" id="mlConclusions" style="display:none">
+                            <div class="ml-conclusions-title">💡 模型分析结论</div>
+                            <ul class="ml-conclusions-list" id="mlConclusionsList"></ul>
+                        </div>
+                    </div>
+                    <div class="ml-empty" id="mlEvalEmpty" style="display:none">模型训练后可评估</div>
+
+                    <!-- 导出按钮 -->
+                    <button class="ml-btn-sm" id="mlExportBtn" style="display:none;margin-top:6px"
+                            onclick="exportMLReport()">📥 导出 ML 分析报告</button>
                 </div>
 
                 <!-- Tab 2：关系分析 -->
